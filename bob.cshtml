@@ -1,0 +1,116 @@
+@using RazorLight
+@using MagmaDataMiner
+@inherits TemplatePage<AbilitiesModel>
+
+<head>
+	<style>
+		body {
+			font-size: larger;
+			font-family: Verdana;
+		}
+		.ability-source-container {
+			margin-bottom: 80px;
+		}
+
+		.augment-table {
+			width: 70%;
+		}
+
+		.source-selector {
+			min-width: 120px;
+			min-height: 30px;
+			background-color:lightblue;
+			border: solid black 1px;
+			margin-left: 10px;
+			margin-right: 10px;
+			display: inline-block;
+			text-align: center;
+			cursor: pointer;
+			user-select: none;
+			padding-left: 4px;
+			padding-right: 4px;
+		}
+
+		.source-selectors {
+			min-height: 50px;
+		}
+
+		.source-selected {
+			background-color: yellow;
+		}
+	</style>
+</head>
+
+<body>
+	<div class="source-selectors">
+	@foreach (var source in @Model.Sources)
+	{
+		<span class="source-selector" data-source="@source.Source">
+			@source.Source
+		</span>
+	}
+	</div>
+
+	@foreach (var source in @Model.Sources)
+	{
+		<div class="ability-source-container" style="display: none" data-source="@source.Source">
+			<h2 class="ability-source">@source.Source</h2>
+			@foreach (var ability in source.Abilities)
+			{
+				<h3>@ability.Name</h3>
+				<table class="augment-table">
+					<tr>
+						<th width="100px">Name</th>
+						<th width="100">Description</th>
+						<th width="100px">Rarity</th>
+						<th width="100px">Unique</th>
+					</tr>
+					@foreach (var augment in ability.Augments)
+					{
+						<tr>
+							<td width="100px">@augment.Name</td>
+							<td width="100">@Raw(augment.Description)</td>
+							<td width="100px">@augment.Rarity</td>
+							<td width="100px">@augment.Unique</td>
+						</tr>
+					}
+				</table>
+			}
+		</div>
+	}
+
+	<script>
+		const sourceSelectors = document.getElementsByClassName("source-selector");
+		const views = new Map();
+		for (const view of document.getElementsByClassName("ability-source-container")) {
+			views.set(view.getAttribute("data-source"), view);
+		}
+
+		let currentView = null;
+
+		for (const selectSource of sourceSelectors) {
+			const view = views.get(selectSource.getAttribute("data-source"));
+
+			selectSource.addEventListener('click', e => {
+
+				if (selectSource.classList.contains("source-selected")) {
+					return;
+				}
+
+				for (const other of sourceSelectors) {
+					if (other != selectSource) {
+						other.classList.remove("source-selected");
+					}
+				}
+
+				if (currentView) {
+					currentView.style.display = 'none';
+				}
+				selectSource.classList.add("source-selected");
+				view.style.display = 'block';
+				currentView = view;
+			});
+		}
+
+	</script>
+</body>
