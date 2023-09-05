@@ -28,7 +28,7 @@ namespace MagmaDataMiner
 
             var html = await engine.CompileRenderAsync("bob.cshtml", model);
             Console.WriteLine("b");
-            File.WriteAllText(@"D:\stuff.html", html);
+            File.WriteAllText(@"C:\Users\worce\source\repos\TheBindery\index.html", html);
         }
     }
 

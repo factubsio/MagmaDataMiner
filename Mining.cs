@@ -246,6 +246,10 @@ namespace MagmaDataMiner
                     return value.ToString();
                 else if (Loccer.TryGetLocalizationParameterStatusEffectProcChance(param, out var value2))
                     return value2.ToString();
+                else if (param == "oa")
+                    return "<span class=\"text-added\">";
+                else if (param == "ca")
+                    return "</span>";
                 else
                     return param;
 

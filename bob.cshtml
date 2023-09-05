@@ -3,114 +3,167 @@
 @inherits TemplatePage<AbilitiesModel>
 
 <head>
-	<style>
-		body {
-			font-size: larger;
-			font-family: Verdana;
-		}
-		.ability-source-container {
-			margin-bottom: 80px;
-		}
-
-		.augment-table {
-			width: 70%;
-		}
-
-		.source-selector {
-			min-width: 120px;
-			min-height: 30px;
-			background-color:lightblue;
-			border: solid black 1px;
-			margin-left: 10px;
-			margin-right: 10px;
-			display: inline-block;
-			text-align: center;
-			cursor: pointer;
-			user-select: none;
-			padding-left: 4px;
-			padding-right: 4px;
-		}
-
-		.source-selectors {
-			min-height: 50px;
-		}
-
-		.source-selected {
-			background-color: yellow;
-		}
-	</style>
+	<link rel="stylesheet" href="stuff.css">
 </head>
 
 <body>
-	<div class="source-selectors">
-	@foreach (var source in @Model.Sources)
-	{
-		<span class="source-selector" data-source="@source.Source">
-			@source.Source
-		</span>
-	}
-	</div>
+	<div class="nav-selectors">
+		<div class="page-selectors">
+			<span class="page-selector generic-selector" data-page="bindings">Bindings</span>
+			<span class="page-selector generic-selector" data-page="vestiges">Vestiges</span>
+			<span class="page-selector generic-selector" data-page="enemies">Enemies</span>
+		</div>
 
-	@foreach (var source in @Model.Sources)
-	{
-		<div class="ability-source-container" style="display: none" data-source="@source.Source">
-			<h2 class="ability-source">@source.Source</h2>
-			@foreach (var ability in source.Abilities)
+		<div class="sub-selectors" style="display:none" data-page="bindings">
+			@foreach (var source in @Model.Sources)
 			{
-				<h3>@ability.Name</h3>
-				<table class="augment-table">
-					<tr>
-						<th width="100px">Name</th>
-						<th width="100">Description</th>
-						<th width="100px">Rarity</th>
-						<th width="100px">Unique</th>
-					</tr>
-					@foreach (var augment in ability.Augments)
-					{
-						<tr>
-							<td width="100px">@augment.Name</td>
-							<td width="100">@Raw(augment.Description)</td>
-							<td width="100px">@augment.Rarity</td>
-							<td width="100px">@augment.Unique</td>
-						</tr>
-					}
-				</table>
+				<span class="source-selector generic-selector" data-source="@source.Source">
+					@source.Source
+				</span>
 			}
 		</div>
-	}
+	</div>
+
+	<div class="content-root">
+		<div class="page-container" style="display:none" data-page="bindings">
+
+			@foreach (var source in @Model.Sources)
+			{
+				<div class="source-container" style="display: none" data-source="@source.Source">
+					<div class="generic-container">
+						<h2 class="ability-source">@source.Source</h2>
+						@foreach (var ability in source.Abilities)
+						{
+							<div class="generic-box generic-container">
+								<h3>@ability.Name</h3>
+								<table class="augment-table">
+									<tr>
+										<th width="100px">Name</th>
+										<th width="100">Description</th>
+										<th width="100px">Rarity</th>
+										<th width="100px">Unique</th>
+									</tr>
+									@foreach (var augment in ability.Augments)
+									{
+										<tr>
+											<td width="100px">@augment.Name</td>
+											<td width="100">@Raw(augment.Description)</td>
+											<td width="100px">@augment.Rarity</td>
+											<td width="100px">@augment.Unique</td>
+										</tr>
+									}
+								</table>
+								<div class="ascensions-container">
+									@foreach (var ascension in ability.Ascensions)
+									{
+										<div>
+											<span class="ascension-name">@ascension.Name</span>
+											<span class="ascension-description">@Raw(ascension.Description)</span>
+										</div>
+									}
+								</div>
+							</div>
+
+						}
+					</div>
+				</div>
+			}
+		</div>
+		<div class="page-container" style="display:none" data-page="vestiges">
+
+			<table class="vestige-table">
+				<tr>
+					<th width="100px">Name</th>
+					<th width="100">Description</th>
+					<th width="100px">Rarity</th>
+				</tr>
+				@foreach (var vestige in @Model.Vestiges)
+				{
+					<tr>
+						<td width="100px">@vestige.Name</td>
+						<td width="100">@Raw(vestige.Description)</td>
+						<td width="100px">@vestige.Rarity</td>
+					</tr>
+				}
+			</table>
+
+		</div>
+		<div class="page-container" style="display:none" data-page="enemies">
+		</div>
+	</div>
 
 	<script>
-		const sourceSelectors = document.getElementsByClassName("source-selector");
-		const views = new Map();
-		for (const view of document.getElementsByClassName("ability-source-container")) {
-			views.set(view.getAttribute("data-source"), view);
-		}
+		function createSelector(type, nav, initial) {
+			const selectors = document.getElementsByClassName(`${type}-selector`);
+			const views = new Map();
+			const navViews = new Map();
 
-		let currentView = null;
+			const dataElem = `data-${type}`;
 
-		for (const selectSource of sourceSelectors) {
-			const view = views.get(selectSource.getAttribute("data-source"));
+			for (const view of document.getElementsByClassName(`${type}-container`)) {
+				views.set(view.getAttribute(dataElem), view);
+			}
 
-			selectSource.addEventListener('click', e => {
-
-				if (selectSource.classList.contains("source-selected")) {
-					return;
+			if (nav) {
+				for (const navView of document.getElementsByClassName(`sub-selectors`)) {
+					navViews.set(navView.getAttribute(dataElem), navView);
 				}
+			}
 
-				for (const other of sourceSelectors) {
-					if (other != selectSource) {
-						other.classList.remove("source-selected");
+			let currentView = null;
+			let currentNavView = null;
+
+			for (const button of selectors) {
+				const buttonId = button.getAttribute(dataElem);
+				const view = views.get(buttonId);
+				const navView = navViews.get(buttonId);
+
+				function selectThis() {
+					button.classList.add("generic-selected");
+					view.style.display = 'block';
+					if (nav) {
+						navView.style.display = 'block';
+					}
+
+					currentView = view;
+					if (nav) {
+						currentNavView = navView;
 					}
 				}
 
-				if (currentView) {
-					currentView.style.display = 'none';
+				button.addEventListener('click', e => {
+
+					if (button.classList.contains("generic-selected")) {
+						return;
+					}
+
+					for (const other of selectors) {
+						if (other != button) {
+							other.classList.remove("generic-selected");
+						}
+					}
+
+					if (currentView) {
+						currentView.style.display = 'none';
+					}
+					if (nav && currentNavView) {
+						currentNavView.style.display = 'none';
+					}
+
+					selectThis();
+
+				});
+
+				if (buttonId == initial) {
+					selectThis();
 				}
-				selectSource.classList.add("source-selected");
-				view.style.display = 'block';
-				currentView = view;
-			});
+			}
+
 		}
+
+		createSelector('page', true, 'bindings');
+
+		createSelector('source', false, 'Magma Miner');
 
 	</script>
 </body>

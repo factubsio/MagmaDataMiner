@@ -9,6 +9,7 @@ namespace MagmaDataMiner
 {
 	public record class Augment(string Name, string Description, RarityType Rarity, bool Unique);
 	public record class Ability(string Name, string Description, List<Ability> Ascensions, List<Augment> Augments);
+	public record class Vestige(string Name, string Description, RarityType Rarity);
 
 	public class AbilitySource
 	{
@@ -17,7 +18,7 @@ namespace MagmaDataMiner
 
 		internal void AddAbility(MinedAsset abilityData)
 		{
-            Ability ability = new(abilityData["abilityName"].String, abilityData["description"].String, new(), new());
+            Ability ability = new(abilityData["abilityName"].String, abilityData["description"].Localized(), new(), new());
 			foreach (var upgrade in abilityData.EnumerateAssetLinks("mainUpgrades"))
 			{
                 var effect = upgrade.Deref("statusEffect");
@@ -31,6 +32,9 @@ namespace MagmaDataMiner
                 ability.Augments.Add(augment);
             }
 
+			foreach (var ascension in abilityData.EnumerateAssetLinks("ascensions"))
+				ability.Ascensions.Add(new(ascension["abilityName"].String, ascension["description"].Localized(), new(), new()));
+
 			ability.Augments.Sort((a, b) => a.Rarity.CompareTo(b.Rarity));
             Abilities.Add(ability);
         }
@@ -40,5 +44,6 @@ namespace MagmaDataMiner
 	{
 		public List<AbilitySource> Sources = new();
 
+		public List<Vestige> Vestiges = new();
 	}
 }

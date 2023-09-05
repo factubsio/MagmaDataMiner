@@ -48,8 +48,8 @@ MineDb.LoadAll("AbilityListData");
 
 const string draftableAssetName = "ClassesAndLoot/AbilityDrafts/DraftLists/NonClassAbilities_AbilityList";
 
-var draftableAbilities = MineDb.Lookup(draftableAssetName).EnumerateAssetLinks("abilities").ToList();
-var charClasses = MineDb.AssetsByType("CharacterClassData").ToList();
+var draftableAbilities = MineDb.Lookup(draftableAssetName).EnumerateAssetLinks("abilities");
+var charClasses = MineDb.AssetsByType("CharacterClassData");
 
 AbilitiesModel model = new();
 foreach (var charClass in charClasses)
@@ -71,6 +71,15 @@ foreach (var abilityData in draftableAbilities.OrderBy(d => d["abilityName"].Str
     draftable.AddAbility(abilityData);
 model.Sources.Add(draftable);
 
+
+foreach (var vestige in MineDb.AssetsByType("EquipmentData").OrderBy(x => x["rarity"].Value).ThenBy(x => x["equipmentName"].String))
+{
+    if (vestige["description"].IsNull)
+    {
+        continue;
+    }
+    model.Vestiges.Add(new(vestige["equipmentName"].String, vestige["description"].Localized(), (RarityType)vestige["rarity"].Value));
+}
 
 WebGen.Bob(model);
 
