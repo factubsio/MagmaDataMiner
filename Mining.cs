@@ -35,6 +35,11 @@ namespace MagmaDataMiner
         {
             var token = ReadToken();
 
+            if (token == SoBinarySerializerBase.Token.ExpectedTypeHint)
+            {
+                throw new NotSupportedException();
+            }
+
             object value;
 
             switch (token)
@@ -52,12 +57,11 @@ namespace MagmaDataMiner
                     break;
 
                 case SoBinarySerializerBase.Token.Array:
-                    throw new NotImplementedException("array");
-                    //value = this.DeserializeArray(expectedType);
+                    value = this.DeserializeList(hint.GetElementType()!);
                     break;
 
                 case SoBinarySerializerBase.Token.List:
-                    value = this.DeserializeList(hint);
+                    value = this.DeserializeList(hint.GetGenericArguments()[0]);
                     break;
 
                 case SoBinarySerializerBase.Token.Null:
@@ -83,19 +87,16 @@ namespace MagmaDataMiner
             return Enum.ToObject(hint, value);
         }
 
-        private object DeserializeList(Type hint)
+
+        private object DeserializeList(Type elemHint)
         {
             int num = reader.ReadInt32();
 
-            Type elemHint = hint.GetGenericArguments()[0];
-
             MinedField[] arr = new MinedField[num];
-            level++;
             for (int i = 0; i < num; i++)
             {
                 arr[i] = Mine(elemHint);
             }
-            level--;
             End();
 
             return arr;
@@ -122,6 +123,10 @@ namespace MagmaDataMiner
                 {
                     reader.BaseStream.Position = pos + len;
                     obj.fields.Add(fieldName, new("<unknown>"));
+                    if (len == 0)
+                    {
+                        throw new Exception("length mismatch");
+                    }
                 }
                 else
                 {
@@ -129,10 +134,6 @@ namespace MagmaDataMiner
                     obj.fields.Add(fieldName, value);
                 }
 
-                if (reader.BaseStream.Position != pos + len)
-                {
-                    throw new Exception("length mismatch");
-                }
 
                 //this.reader.BaseStream.Position = pos + (long)((ulong)len);
             }
@@ -239,6 +240,10 @@ namespace MagmaDataMiner
 
         public string Localized()
         {
+            if (IsNull)
+            {
+                return "";
+            }
             var raw = (String.Clone() as string)!;
             Loccer.ApplyLocalizationParams(ref raw, param =>
             {
@@ -324,6 +329,8 @@ namespace MagmaDataMiner
 
         public MinedAsset Deref() => MineDb.Get(this["guid"].String);
         public MinedAsset Deref(string v) => Asset.Deref(v);
+
+        internal bool Has(string v) => Asset.fields.ContainsKey(v);
 
         public MinedField this[string index]
         {
@@ -484,5 +491,11 @@ namespace MagmaDataMiner
         internal static MinedAsset Lookup(string v) => byName[v];
 
         internal static IEnumerable<MinedAsset> AssetsByType(string v) => ByType[v].Select(x => Get(x));
+
+        internal static void LoadAll()
+        {
+            foreach (var type in baseDataTypeToEntries.Keys)
+                LoadAll(type);
+        }
     }
 }

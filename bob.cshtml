@@ -1,3 +1,4 @@
+@using Microsoft.AspNetCore.Components
 @using RazorLight
 @using MagmaDataMiner
 @inherits TemplatePage<AbilitiesModel>
@@ -6,21 +7,39 @@
 	<link rel="stylesheet" href="stuff.css">
 </head>
 
+
 <body>
 	<div class="nav-selectors">
 		<div class="page-selectors">
 			<span class="page-selector generic-selector" data-page="bindings">Bindings</span>
-			<span class="page-selector generic-selector" data-page="vestiges">Vestiges</span>
+			<span class="page-selector generic-selector" data-page="equip">Equipment</span>
 			<span class="page-selector generic-selector" data-page="enemies">Enemies</span>
+			<span class="page-selector generic-selector" data-page="other">Misc (?)</span>
 		</div>
 
 		<div class="sub-selectors" style="display:none" data-page="bindings">
 			@foreach (var source in @Model.Sources)
 			{
-				<span class="source-selector generic-selector" data-source="@source.Source">
+				<span class="bindings-selector generic-selector" data-bindings="@source.Source">
 					@source.Source
 				</span>
 			}
+		</div>
+		<div class="sub-selectors" style="display:none" data-page="equip">
+			@foreach (var category in @Model.Equipment)
+			{
+				<span class="equip-selector generic-selector" data-equip="@category.Name">
+					@category.Name
+				</span>
+			}
+		</div>
+		<div class="sub-selectors" style="display:none" data-page="other">
+			<span class="other-selector generic-selector" data-other="banes">
+				Book Challenges
+			</span>
+			<span class="other-selector generic-selector" data-other="run-mutators">
+				Run Mutators
+			</span>
 		</div>
 	</div>
 
@@ -29,7 +48,7 @@
 
 			@foreach (var source in @Model.Sources)
 			{
-				<div class="source-container" style="display: none" data-source="@source.Source">
+				<div class="bindings-container" style="display: none" data-bindings="@source.Source">
 					<div class="generic-container">
 						<h2 class="ability-source">@source.Source</h2>
 						@foreach (var ability in source.Abilities)
@@ -70,34 +89,174 @@
 				</div>
 			}
 		</div>
-		<div class="page-container" style="display:none" data-page="vestiges">
+		<div class="page-container" style="display:none" data-page="equip">
+			@foreach (var category in @Model.Equipment)
+			{
+				<div class="equip-container" style="display: none" data-equip="@category.Name">
 
+					<table class="vestige-table">
+						<tr>
+							<th width="100px">Name</th>
+							<th width="100">Description</th>
+							<th width="100px">Rarity</th>
+							<th width="100px">bob</th>
+						</tr>
+						@foreach (var item in category.All)
+						{
+							<tr>
+								<td width="100px">@item.Name</td>
+								<td width="100">@Raw(item.Description)</td>
+								<td width="100px">@item.Rarity</td>
+								<td width="100px">@item.Bob</td>
+							</tr>
+						}
+					</table>
+				</div>
+
+			}
+
+		</div>
+		<div class="page-container" style="display:none" data-page="enemies">
+			@foreach (var enemy in @Model.Enemies)
+			{
+				<div class="enemy-container">
+					<h4>@enemy.Name</h4>
+
+					@if (!enemy.SpawnAction.IsEmpty)
+					{
+						<div class="enemy-phase">
+							<b>On Spawn:</b>
+							<div class="enemy-state">
+								@foreach (var block in enemy.SpawnAction.Blocks)
+								{
+									<div class="enemy-block">
+										@foreach (var action in block.Candidates)
+										{
+											<div class="enemy-action">
+												<span style="display: block;">@action.Name</span>
+												<p>@action.Description</p>
+											</div>
+										}
+									</div>
+								}
+							</div>
+						</div>
+					}
+
+
+					@for (int p = 0; p < enemy.Phases.Count; p++)
+					{
+						var phase = enemy.Phases[p];
+
+						<div class="enemy-phase">
+							@if (enemy.Phases.Count > 1)
+							{
+								<b class="phase-title">Phase @p</b>
+							}
+							@foreach (var state in phase.States)
+							{
+								<b class="enemy-state-title">@state.Name</b>
+								<div class="enemy-state">
+									@foreach (var block in state.Blocks)
+									{
+										<div class="enemy-block">
+											@foreach (var action in block.Candidates)
+											{
+												<div class="enemy-action">
+													<span style="display: block;">@action.Name</span>
+													<p>@action.Description</p>
+												</div>
+											}
+										</div>
+									}
+								</div>
+
+							}
+						</div>
+
+					}
+
+					@*					<table class="vestige-table">
+				<tr>
+				<th width="100px">Name</th>
+				<th width="100">Description</th>
+				<th width="100px">Rarity</th>
+				<th width="100px">bob</th>
+				</tr>
+				@foreach (var item in category.All)
+				{
+				<tr>
+				<td width="100px">@item.Name</td>
+				<td width="100">@Raw(item.Description)</td>
+				<td width="100px">@item.Rarity</td>
+				<td width="100p">@item.Bob</td>
+				</tr>
+				}
+				</table>
+				*@
+				</div>
+
+			}
+		</div>
+	</div>
+	<div class="page-container" style="display:none" data-page="other">
+
+		<div class="other-container" style="display: none" data-other="banes">
 			<table class="vestige-table">
 				<tr>
 					<th width="100px">Name</th>
 					<th width="100">Description</th>
-					<th width="100px">Rarity</th>
+					<th width="100px">Rewards</th>
 				</tr>
-				@foreach (var vestige in @Model.Vestiges)
+				@foreach (var bane in Model.Banes.Where(x => !x.IsRunMutator))
 				{
 					<tr>
-						<td width="100px">@vestige.Name</td>
-						<td width="100">@Raw(vestige.Description)</td>
-						<td width="100px">@vestige.Rarity</td>
+						<td width="100px">@Raw(@bane.Name)</td>
+						<td width="100">@Raw(bane.Description)</td>
+						<td width="100px">@bane.Reward</td>
 					</tr>
 				}
 			</table>
-
 		</div>
-		<div class="page-container" style="display:none" data-page="enemies">
+
+		<div class="other-container" style="display: none" data-other="run-mutators">
+			<table class="vestige-table">
+				<tr>
+					<th width="100px">Name</th>
+					<th width="100">Description</th>
+				</tr>
+				@foreach (var bane in Model.Banes.Where(x => x.IsRunMutator))
+				{
+					<tr>
+						<td width="100px">@Raw(@bane.Name)</td>
+						<td width="100">@Raw(bane.Description)</td>
+					</tr>
+				}
+			</table>
 		</div>
 	</div>
 
 	<script>
-		function createSelector(type, nav, initial) {
+		const curr = new URLSearchParams(window.location.search);
+
+		const navState = {
+			page: curr.get("page"),
+			section: curr.get("section").replace('_', ' '),
+			activeOnPage: new Map(),
+		};
+
+		console.log(navState);
+
+		function createSelector(type, nav, initial, defaults) {
 			const selectors = document.getElementsByClassName(`${type}-selector`);
 			const views = new Map();
 			const navViews = new Map();
+
+			if (defaults) {
+				if (defaults.page === type) {
+					initial = defaults.section;
+				}
+			}
 
 			const dataElem = `data-${type}`;
 
@@ -119,7 +278,7 @@
 				const view = views.get(buttonId);
 				const navView = navViews.get(buttonId);
 
-				function selectThis() {
+				function selectThis(updateNavState) {
 					button.classList.add("generic-selected");
 					view.style.display = 'block';
 
@@ -131,6 +290,26 @@
 					if (nav) {
 						currentNavView = navView;
 					}
+
+					if (!nav) {
+						navState.activeOnPage.set(type, buttonId);
+					}
+
+					if (updateNavState) {
+						if (nav) {
+							navState.page = buttonId;
+							navState.section = navState.activeOnPage.get(buttonId);
+						} else {
+							navState.section = buttonId;
+						}
+
+						const url = new URL(window.location);
+						url.searchParams.set("page", navState.page);
+						url.searchParams.set("section", navState.section);
+						window.history.pushState({}, "", url);
+
+					}
+
 				}
 
 				button.addEventListener('click', e => {
@@ -152,20 +331,24 @@
 						currentNavView.style.display = 'none';
 					}
 
-					selectThis();
+					selectThis(true);
 
 				});
 
 				if (buttonId == initial) {
-					selectThis();
+					selectThis(false);
 				}
 			}
 
 		}
 
-		createSelector('page', true, 'bindings');
+		createSelector('page', true, navState.page || 'bindings');
 
-		createSelector('source', false, 'Magma Miner');
+		createSelector('bindings', false, 'Magma Miner', navState);
+		createSelector('equip', false, 'Vestiges', navState);
+		createSelector('other', false, 'banes', navState);
 
 	</script>
 </body>
+
+

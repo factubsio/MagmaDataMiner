@@ -9,7 +9,26 @@ namespace MagmaDataMiner
 {
 	public record class Augment(string Name, string Description, RarityType Rarity, bool Unique);
 	public record class Ability(string Name, string Description, List<Ability> Ascensions, List<Augment> Augments);
-	public record class Vestige(string Name, string Description, RarityType Rarity);
+	public record class EquipmentCategory(string Name, List<Vestige> All);
+	public record class Vestige(string Name, string Description, RarityType Rarity, string Bob = "");
+
+	public record class AiStateTransition(AiState Target, string Condition);
+	public record class AiAction(string Name, string Description, AiStateTransition? Transition);
+	public record class AiActionBlock(List<AiAction> Candidates);
+	public record class AiState(string Name, List<AiActionBlock> Blocks, List<AiStateTransition> Transitions)
+	{
+		public bool IsEmpty => Blocks.Count == 0;
+	}
+
+	public record class AiPhase(string Name, List<AiState> States);
+
+	public record class Enemy(string Name, List<AiPhase> Phases, AiState SpawnAction);
+
+	public record class Bane(string Name, string Description, int CurrencyGain, string CurrencyType, bool IsRunMutator)
+	{
+		public string Reward => $"{CurrencyGain} {CurrencyType}";
+
+	};
 
 	public class AbilitySource
 	{
@@ -44,6 +63,10 @@ namespace MagmaDataMiner
 	{
 		public List<AbilitySource> Sources = new();
 
-		public List<Vestige> Vestiges = new();
+		public List<EquipmentCategory> Equipment = new();
+
+		public List<Enemy> Enemies = new();
+
+		public List<Bane> Banes = new();
 	}
 }
