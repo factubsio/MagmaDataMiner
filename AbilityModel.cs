@@ -10,7 +10,21 @@ namespace MagmaDataMiner
 	public record class Augment(string Name, string Description, RarityType Rarity, bool Unique);
 	public record class Ability(string Name, string Description, List<Ability> Ascensions, List<Augment> Augments);
 	public record class EquipmentCategory(string Name, List<Vestige> All);
-	public record class Vestige(string Name, string Description, RarityType Rarity, string Bob = "");
+
+	public record class StatGain(int Value, string Name)
+	{
+		public string Icon
+		{
+			get
+			{
+				if (Name == null)
+					return "null";
+				else
+					return Name.ToLower().Replace(" ", "-");
+			}
+		}
+	}
+	public record class Vestige(string Name, string Description, RarityType Rarity, List<StatGain> Stats);
 
 	public record class AiStateTransition(AiState Target, string Condition);
 	public record class AiAction(string Name, string Description, AiStateTransition? Transition);

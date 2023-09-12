@@ -122,11 +122,6 @@ model.Equipment.Add(consumables);
 
 foreach (var vestige in MineDb.AssetsByType("EquipmentData").OrderBy(x => x["rarity"].Value).ThenBy(x => x["equipmentName"].String))
 {
-    if (vestige["description"].IsNull)
-    {
-        continue;
-    }
-
 
     var eType = (EquipmentType)vestige["equipmentType"].Value;
 
@@ -137,17 +132,35 @@ foreach (var vestige in MineDb.AssetsByType("EquipmentData").OrderBy(x => x["rar
         _ => null,
     };
 
+
     if (type == null)
     {
         continue;
     }
 
+    PrintAsset(vestige, output);
+
+    List<StatGain> stats = new();
+
+    if (eType == EquipmentType.Accessory)
+    {
+        foreach (var x in vestige["statEntries"]["statEntries"].Enumerate())
+        {
+            var stat = x.Deref("entryStatData");
+            if (stat["statName"].IsNull || stat["replacementString"].IsNull)
+            {
+                continue;
+            }
+            PrintAsset(stat, output);
+            stats.Add(new(x["entryValue"].Int, stat["statName"].String));
+        }
+    }
 
     type.All.Add(new(
         vestige["equipmentName"].String,
         vestige["description"].Localized(),
         (RarityType)vestige["rarity"].Value,
-        vestige["equipmentType"].Value.ToString()!));
+        stats));
 }
 
 HashSet<string> brainsDone = new();
@@ -262,10 +275,10 @@ foreach (var baneData in baneList)
 
     var helper = baneData.Deref("helperData");
 
-    output.WriteLine(baneData.AssetName);
-    output.WriteLine(helper["titleKey"].String);
-    output.WriteLine(helper["descriptionKey"].String);
-    PrintAsset(baneData, output);
+    //output.WriteLine(baneData.AssetName);
+    //output.WriteLine(helper["titleKey"].String);
+    //output.WriteLine(helper["descriptionKey"].String);
+    //PrintAsset(baneData, output);
 
     int gold = baneData["runCurrencyGainedOnSelection"].Int;
     string currencyType = "kwillings";

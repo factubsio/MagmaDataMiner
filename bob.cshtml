@@ -107,7 +107,16 @@
 								<td width="100px">@item.Name</td>
 								<td width="100">@Raw(item.Description)</td>
 								<td width="100px">@item.Rarity</td>
-								<td width="100px">@item.Bob</td>
+								<td width="100px">
+									@foreach (var stat in @item.Stats)
+									{
+										<div class="stat-entry">
+											<span>@stat.Value</span>
+											<span class="stat-@stat.Icon">@stat.Name</span>
+										</div>
+									}
+
+								</td>
 							</tr>
 						}
 					</table>
