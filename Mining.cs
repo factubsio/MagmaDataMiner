@@ -363,6 +363,80 @@ namespace MagmaDataMiner
                 return MinedField.Visit(new(this), "root");
             }
         }
+        private static void Indent(int level, TextWriter output)
+        {
+            for (int i = 0; i < level; i++)
+            {
+                output.Write("  ");
+            }
+        }
+
+        public string RawJson
+        {
+            get
+            {
+                StringWriter raw = new();
+
+                int level = 0;
+
+                Stack<bool> isObject = new();
+
+                foreach (var x in Iterate)
+                {
+                    if (x.levelDelta > 0)
+                    {
+                        Indent(level, raw);
+                        char ch = x.isObj ? '{' : '[';
+                        string end = "";
+                        if (x.Count == 0)
+                            end = x.isObj ? "}," : "],";
+
+                        if (level > 0)
+                        {
+                            if (isObject.Peek())
+                                raw.WriteLine($"\"{x.key}\": {ch}{end}");
+                            else
+                                raw.WriteLine($"{ch}{end}");
+                        }
+                        else
+                        {
+                            raw.WriteLine("{");
+                        }
+
+                        isObject.Push(x.isObj);
+                        level++;
+                    }
+                    else if (x.levelDelta < 0)
+                    {
+                        level--;
+                        isObject.Pop();
+                        if (x.Count > 0)
+                        {
+                            Indent(level, raw);
+                            if (level == 0)
+                                raw.WriteLine("}");
+                            else
+                                raw.WriteLine($"{(x.isObj ? '}' : ']')},");
+                        }
+                    }
+                    else
+                    {
+                        Indent(level, raw);
+                        if (isObject.Peek())
+                            raw.WriteLine($"\"{x.key}\": \"{Escape(x.value)}\",");
+                        else
+                            raw.WriteLine($"\"{Escape(x.value)}\",");
+                    }
+                }
+
+                return raw.ToString();
+            }
+        }
+
+        private string Escape(string value)
+        {
+            return value.Replace("\n", "\\n");
+        }
 
         public MinedField this[string index] => fields[index];
 
@@ -377,6 +451,9 @@ namespace MagmaDataMiner
         }
 
         public string AssetName = "";
+        public string DataId = "";
+        public string Guid = "";
+        public string TypeName = "";
     }
 
     public class MineDb
@@ -392,6 +469,8 @@ namespace MagmaDataMiner
         private const long DefaultObjectFileID = 11400000L;
 
         public static Dictionary<string, List<AssetLibraryManifest.Entry>> ByType => baseDataTypeToEntries;
+
+        public static IEnumerable<MinedAsset> All => db.Values;
 
         public static void Init(string path)
         {
@@ -465,6 +544,9 @@ namespace MagmaDataMiner
                 Miner miner = new(stream);
                 asset = miner.Mine(type).Asset;
                 asset.AssetName = entry.name;
+                asset.DataId = entry.dataId;
+                asset.Guid = entry.assetID._guid;
+                asset.TypeName = entry.classType.FullName!;
 
                 //output.WriteLine("loaded: " + entry.dataId);
 
@@ -482,17 +564,17 @@ namespace MagmaDataMiner
 
         public static void LoadAll(string type)
         {
-            foreach (var ability in baseDataTypeToEntries[type])
+            foreach (var entry in baseDataTypeToEntries[type])
             {
-                GetOrLoadAsset(ability);
+                GetOrLoadAsset(entry);
             }
         }
 
-        internal static MinedAsset Lookup(string v) => byName[v];
+        public static MinedAsset Lookup(string v) => byName[v];
 
-        internal static IEnumerable<MinedAsset> AssetsByType(string v) => ByType[v].Select(x => Get(x));
+        public static IEnumerable<MinedAsset> AssetsByType(string v) => ByType[v].Select(x => Get(x));
 
-        internal static void LoadAll()
+        public static void LoadAll()
         {
             foreach (var type in baseDataTypeToEntries.Keys)
                 LoadAll(type);

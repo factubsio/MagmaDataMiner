@@ -21,7 +21,7 @@ namespace MagmaDataMiner
 				return;
 			}
 			_applyParamsDepth++;
-			LocalizationUtil.ApplyTranslationReplacements(ref translation);
+			//LocalizationUtil.ApplyTranslationReplacements(ref translation);
 			int length = translation.Length;
 			int num = 0;
 			while (num >= 0 && num < translation.Length)
