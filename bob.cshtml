@@ -1,4 +1,4 @@
-@using Microsoft.AspNetCore.Components
+﻿@using Microsoft.AspNetCore.Components
 @using RazorLight
 @using MagmaDataMiner
 @inherits TemplatePage<AbilitiesModel>
@@ -15,6 +15,10 @@
 			<span class="page-selector generic-selector" data-page="equip">Equipment</span>
 			<span class="page-selector generic-selector" data-page="enemies">Enemies</span>
 			<span class="page-selector generic-selector" data-page="other">Misc (?)</span>
+			<div class="searcher">
+				<input type="text" id="search-input" autocomplete="off"/>
+				<div id="results" style="display: none;"></div>
+			</div>
 		</div>
 
 		<div class="sub-selectors" style="display:none" data-page="bindings">
@@ -53,8 +57,8 @@
 						<h2 class="ability-source">@source.Source</h2>
 						@foreach (var ability in source.Abilities)
 						{
-							<div class="generic-box generic-container">
-								<h3>@ability.Name</h3>
+							<div class="generic-box generic-container" id="dataid:@ability.Hash">
+								<div class="binding-title"><h3 style="display:inline-block">@ability.Name</h3><span class="linkme" data-id="@ability.Hash">permalink</span></div>
 								<h4>@Raw(ability.Description)</h4>
 								<table class="augment-table">
 									<tr>
@@ -96,15 +100,15 @@
 
 					<table class="vestige-table">
 						<tr>
-							<th width="100px">Name</th>
+							<th width="120px">Name</th>
 							<th width="100">Description</th>
 							<th width="100px">Rarity</th>
 							<th width="100px">Stats</th>
 						</tr>
 						@foreach (var item in category.All)
 						{
-							<tr>
-								<td width="100px">@item.Name</td>
+							<tr id="dataid:@item.Hash">
+								<td width="120px">@item.Name <span class="linkme" data-id="@item.Hash">¶</span></td>
 								<td width="100">@Raw(item.Description)</td>
 								<td width="100px">@item.Rarity</td>
 								<td width="100px">
@@ -219,8 +223,8 @@
 				</tr>
 				@foreach (var bane in Model.Banes.Where(x => !x.IsRunMutator))
 				{
-					<tr>
-						<td width="100px">@Raw(@bane.Name)</td>
+					<tr id="dataid:@bane.Hash">
+						<td width="100px">@Raw(@bane.Name) <span class="linkme" data-id="@bane.Hash">¶</span></td>
 						<td width="100">@Raw(bane.Description)</td>
 						<td width="100px">@bane.Reward</td>
 					</tr>
@@ -236,8 +240,8 @@
 				</tr>
 				@foreach (var bane in Model.Banes.Where(x => x.IsRunMutator))
 				{
-					<tr>
-						<td width="100px">@Raw(@bane.Name)</td>
+					<tr id="dataid:@bane.Hash">
+						<td width="100px">@Raw(@bane.Name) <span class="linkme" data-id="@bane.Hash">¶</span></td>
 						<td width="100">@Raw(bane.Description)</td>
 					</tr>
 				}
@@ -251,112 +255,254 @@
 		const navState = {
 			page: curr.get("page"),
 			section: curr.get("section"),
-			activeOnPage: new Map(),
+			hash: curr.get("data"),
+			
+			blinking: null,
+
+			currentPage: null,
+
+			pages: new Map(),
 		};
 
-		console.log(navState);
+		function navGoto(pageName, sectionName, hash, force) {
+			const page = navState.pages.get(pageName);
 
-		function createSelector(type, nav, initial, defaults) {
-			const selectors = document.getElementsByClassName(`${type}-selector`);
+			if (pageName != navState.page || force) {
+				if (navState.currentPage) {
+					navState.currentPage.view.style.display = 'none';
+					navState.currentPage.button.classList.remove("generic-selected");
+
+					if (navState.currentPage.navView) {
+						navState.currentPage.navView.style.display = 'none';
+					}
+				}
+
+				navState.currentPage = {
+					view: page.view,
+					navView: page.navView,
+					button: page.button,
+				};
+
+				page.button.classList.add('generic-selected');
+				page.view.style.display = 'block';
+
+				if (page.navView) {
+					page.navView.style.display = 'block';
+				}
+
+				sectionName = sectionName || page.sectionName;
+			}
+
+			if (sectionName != page.sectionName || page.currentSection.view == null) {
+				if (page.currentSection.view) {
+					page.currentSection.view.style.display = 'none';
+
+					if (page.currentSection.button) {
+						page.currentSection.button.classList.remove('generic-selected');
+					}
+				}
+
+				const section = page.sections.get(sectionName);
+
+				if (section) {
+					page.currentSection = {
+						view: section.view,
+						button: section.button,
+					};
+
+					if (section.button) {
+						section.button.classList.add('generic-selected');
+					}
+
+					section.view.style.display = 'block';
+				}
+
+				page.sectionName = sectionName;
+			}
+
+			if (hash != navState.hash) {
+				if (navState.blinking) {
+					navState.blinking.classList.remove('notice-me-senpai');
+					navState.blinking = null;
+				}
+			}
+
+			if (hash) {
+				function blink() {
+					const hashView = document.getElementById(`dataid:${hash}`);
+					hashView.scrollIntoView({ block: "center", inline: "nearest" });
+					hashView.classList.add('notice-me-senpai');
+					navState.blinking = hashView;
+				}
+
+				if (force) {
+					setTimeout(blink, 80);
+				} else {
+					blink();
+				}
+			}
+
+			navState.page = pageName;
+			navState.section = sectionName;
+			navState.hash = hash;
+
+			const url = new URL(window.location);
+			url.searchParams.set("page", navState.page);
+			url.searchParams.set("section", navState.section);
+			if (navState.hash) {
+				url.searchParams.set("data", navState.hash);
+			} else {
+				url.searchParams.delete("data");
+			}
+			window.history.pushState({}, "", url);
+		}
+
+		function createPages(defaultSections) {
+			const selectors = document.getElementsByClassName(`page-selector`);
 			const views = new Map();
 			const navViews = new Map();
 
-			if (defaults) {
-				if (defaults.page === type) {
-					initial = defaults.section;
-				}
+			for (const view of document.getElementsByClassName(`page-container`)) {
+				views.set(view.getAttribute('data-page'), view);
 			}
 
-			const dataElem = `data-${type}`;
-
-			for (const view of document.getElementsByClassName(`${type}-container`)) {
-				views.set(view.getAttribute(dataElem), view);
+			for (const navView of document.getElementsByClassName(`sub-selectors`)) {
+				navViews.set(navView.getAttribute('data-page'), navView);
 			}
-
-			if (nav) {
-				for (const navView of document.getElementsByClassName(`sub-selectors`)) {
-					navViews.set(navView.getAttribute(dataElem), navView);
-				}
-			}
-
-			let currentView = null;
-			let currentNavView = null;
 
 			for (const button of selectors) {
-				const buttonId = button.getAttribute(dataElem);
-				const view = views.get(buttonId);
-				const navView = navViews.get(buttonId);
+				const page = button.getAttribute('data-page');
+				const view = views.get(page);
+				const navView = navViews.get(page);
 
-				function selectThis(updateNavState) {
-					button.classList.add("generic-selected");
-					view.style.display = 'block';
+				const sections = new Map();
+				const sectionsContainerByName = new Map();
 
-					if (nav && navView) {
-						navView.style.display = 'block';
-					}
-
-					currentView = view;
-					if (nav) {
-						currentNavView = navView;
-					}
-
-					if (!nav) {
-						navState.activeOnPage.set(type, buttonId);
-					}
-
-					if (updateNavState) {
-						if (nav) {
-							navState.page = buttonId;
-							navState.section = navState.activeOnPage.get(buttonId);
-						} else {
-							navState.section = buttonId;
-						}
-
-						const url = new URL(window.location);
-						url.searchParams.set("page", navState.page);
-						url.searchParams.set("section", navState.section);
-						window.history.pushState({}, "", url);
-
-					}
-
+				for (const sectionContainer of document.getElementsByClassName(`${page}-container`)) {
+					sectionsContainerByName.set(sectionContainer.getAttribute(`data-${page}`), sectionContainer);
 				}
 
-				button.addEventListener('click', e => {
+				for (const sectionButton of document.getElementsByClassName(`${page}-selector`)) {
+					const sectionId = sectionButton.getAttribute(`data-${page}`);
+					sections.set(sectionId, {
+						button: sectionButton,
+						view: sectionsContainerByName.get(sectionId),
+					});
 
-					if (button.classList.contains("generic-selected")) {
-						return;
-					}
+					sectionButton.addEventListener('click', e => {
+						navGoto(page, sectionId, null);
+					});
+				}
 
-					for (const other of selectors) {
-						if (other != button) {
-							other.classList.remove("generic-selected");
-						}
-					}
+				navState.pages.set(page, {
+					view: view,
+					navView: navView,
+					button: button,
 
-					if (currentView) {
-						currentView.style.display = 'none';
-					}
-					if (nav && currentNavView) {
-						currentNavView.style.display = 'none';
-					}
+					sections: sections,
 
-					selectThis(true);
+					sectionName: defaultSections[page],
 
+					currentSection: {
+						view: null,
+						button: null,
+					},
 				});
 
-				if (buttonId == initial) {
-					selectThis(false);
-				}
+				button.addEventListener('click', e => {
+					navGoto(page, null, null);
+				});
 			}
-
 		}
 
-		createSelector('page', true, navState.page || 'bindings');
+		const words = [
+			@foreach(var index in Model.SearchIndex) {
+				@Raw(index.Render())
+			}
+		];
+		let currentIndex = -1;
 
-		createSelector('bindings', false, 'Magma Miner', navState);
-		createSelector('equip', false, 'Vestiges', navState);
-		createSelector('other', false, 'banes', navState);
+		const searchInput = document.getElementById('search-input');
+		const results = document.getElementById('results');
+		let matchedWords = [];
 
+		function updateSearchResults() {
+			if (currentIndex < 0)
+				currentIndex = 0;
+			if (currentIndex >= matchedWords.length)
+				currentIndex = matchedWords.length - 1;
+			results.innerHTML = matchedWords.map((word, index) => `<div class="${index === currentIndex ? 'selected' : ''}">${word.key} (${word.page})</div>`).join('');
+			results.style.display = 'block';
+		}
+
+		function searchFunction(e) {
+			const keyword = searchInput.value.toLowerCase();
+			matchedWords = words.filter(word => word.key.toLowerCase().indexOf(keyword) != -1);
+
+			if (keyword === '' || matchedWords.length === 0) {
+				results.style.display = 'none';
+				return;
+			}
+
+
+			// escape key
+			if (e.keyCode == 27) {
+				results.style.display = 'none';
+				return;
+			} else if (e.keyCode == 13) { //enter
+				e.preventDefault();
+				console.log("ENTER");
+				results.style.display = 'none';
+				const match = matchedWords[currentIndex];
+				if (match) {
+					navGoto(match.page, match.sub, match.hash);
+				}
+				return;
+			}
+
+
+			updateSearchResults();
+		}
+
+		function handleArrows(e) {
+			switch (e.keyCode) {
+				case 38: // up arrow
+					e.preventDefault();
+					currentIndex = Math.max(currentIndex - 1, 0);
+					updateSearchResults();
+					break;
+				case 40: // down arrow
+					e.preventDefault();
+					currentIndex = Math.min(currentIndex + 1, matchedWords.length - 1);
+					updateSearchResults();
+					break;
+				case 13: // enter
+			}
+		}
+
+		navState.page ||= 'bindings';
+
+		createPages({
+			bindings: 'Magma Miner',
+			equip: 'Vestiges',
+			other: 'banes',
+		});
+
+		navGoto(navState.page, navState.section, navState.hash, true);
+
+		
+		for (const link of document.getElementsByClassName('linkme')) {
+			link.addEventListener('click', e => {
+				const url = new URL(window.location);
+				url.searchParams.set("page", navState.page);
+				url.searchParams.set("section", navState.section);
+				url.searchParams.set("data", link.getAttribute('data-id'));
+				navigator.clipboard.writeText(url.toString());
+			});
+		}
+
+		searchInput.addEventListener('keydown', handleArrows);
+		searchInput.addEventListener('keyup', searchFunction);
 	</script>
 </body>
 
