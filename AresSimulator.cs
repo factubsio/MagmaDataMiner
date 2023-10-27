@@ -88,9 +88,16 @@ namespace MagmaDataMiner
 "comment",
         };
 
+        private static readonly Dictionary<string, MinedGraph> GraphCache = new();
+
         public static MinedGraph ParseGraph(MinedAsset graph)
         {
+            if (GraphCache.TryGetValue(graph.AssetName, out var cached)) {
+                return cached;
+            }
+
             MinedGraph result = new(graph.AssetName);
+            GraphCache[graph.AssetName] = result;
 
             nodes.Clear();
             minedNodes.Clear();
@@ -234,6 +241,26 @@ namespace MagmaDataMiner
             }
 
             return result;
+        }
+
+
+        public static int ProcessActionDamage(MinedAsset actionData)
+        {
+            var graphHandle = actionData.Deref("actionGraph");
+            ParseGraph(graphHandle);
+
+            ResolveContext ctx = new(actionData);
+            int damage = 0;
+            foreach (var node in nodes.Values)
+            {
+                if (node.TypeName == "ShinyShoe.Ares.SharedSOs.ActionNodes.DamageFlatAmountActionNode")
+                {
+                    Connection amount = GetPort(node, "amount");
+
+                    damage += ResolveIntNode(ctx, amount);
+                }
+            }
+            return damage;
         }
 
         public static int ProcessAbilityGraph(MinedAsset abilityData)

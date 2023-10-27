@@ -53,6 +53,9 @@ namespace MagmaDataMiner
 
 		public static Context? Current;
 
+		private static readonly Regex actionDamage = new(@"action\.(.*)\.damage");
+		private static readonly Regex statusEffectStat = new(@"statuseffect\.(.*)\.stat\.(.*)");
+
         public static void ApplyLocalizationParams(ref string translation, Func<string, object> getParam, bool allowLocalizedParameters = true)
 		{
 			if (translation == null)
@@ -79,8 +82,31 @@ namespace MagmaDataMiner
 				{
 					value = (Current?.BaseDamage ?? 0).ToString();
 				}
-				else
+				else if (TryMatch(statusEffectStat, tag.Tag, out var statusEffectStatMatch))
 				{
+					if (MineDb.TryGetByData(statusEffectStatMatch.Groups[1].Value, out var statusEffectData))
+					{
+						int statIndex = int.Parse(statusEffectStatMatch.Groups[2].Value);
+						value = statusEffectData["statAdjustments"]["statEntries"].At(statIndex)["entryValue"].Value.ToString()!;
+                    }
+                    else
+					{
+						value = tag.Tag;
+					}
+				}
+				else if (TryMatch(actionDamage, tag.Tag, out var actionMatch))
+				{
+					if (MineDb.TryGetByData(actionMatch.Groups[1].Value, out var actionData))
+					{
+						value = AresSimulator.ProcessActionDamage(actionData).ToString();
+                    }
+                    else
+					{
+						value = tag.Tag;
+					}
+				}
+				else
+                {
 					value = (string)getParam(tag.Tag);
 
 				}
@@ -137,6 +163,13 @@ namespace MagmaDataMiner
 			//}
 			//_applyParamsDepth--;
 		}
+
+		private static bool TryMatch(Regex pattern, string tag, out Match match)
+		{
+			match = pattern.Match(tag);
+			return match.Success;
+		}
+
 		public static bool TryGetLocalizationParameterActionParamAsString(string param, out string value)
 		{
 			if (TryParseLocalizationParameterActionParam(param, out var dataId, out var paramName) && MineDb.TryGetByData(dataId, out var action))
