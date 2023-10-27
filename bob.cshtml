@@ -58,7 +58,16 @@
 						@foreach (var ability in source.Abilities)
 						{
 							<div class="generic-box generic-container" id="dataid:@ability.Hash">
-								<div class="binding-title"><h3 style="display:inline-block">@ability.Name</h3><span class="linkme" data-id="@ability.Hash">permalink</span></div>
+								<div class="binding-title">
+									@if (ability.IconBase64 != null)
+									{
+										<img class="ui-icon" src="data:image/png;base64, @ability.IconBase64"/>
+									}
+									<h3 style="display:inline-block">@ability.Name</h3>
+									<span class="cost">@ability.Cost</span>
+									<span class="cooldown">@ability.Cooldown</span>
+									<span class="linkme" data-id="@ability.Hash">permalink</span>
+								</div>
 								<h4>@Raw(ability.Description)</h4>
 								<table class="augment-table">
 									<tr>
@@ -80,7 +89,7 @@
 								<div class="ascensions-container">
 									@foreach (var ascension in ability.Ascensions)
 									{
-										<div>
+										<div id="dataid:@ascension.Hash">
 											<span class="ascension-name">@ascension.Name</span>
 											<span class="ascension-description">@Raw(ascension.Description)</span>
 										</div>
@@ -97,30 +106,56 @@
 			@foreach (var category in @Model.Equipment)
 			{
 				<div class="equip-container" style="display: none" data-equip="@category.Name">
+					@if(category.Name == "Vestiges") {
+						<div class="set-holder">
+							@foreach (var set in Model.Sets) {
+								<span data-id="@set.Key">@set.Value.Name</span>
+							}
+						</div>
+					}
 
-					<table class="vestige-table">
+					<table class="vestige-table" id="equip-@category.Name">
 						<tr>
+							<th width="60px">Icon</th>
 							<th width="120px">Name</th>
 							<th width="100">Description</th>
 							<th width="100px">Rarity</th>
-							<th width="100px">Stats</th>
+							@if(category.Name == "Vestiges") {
+								<th width="100px">Sets</th>
+								<th width="100px">Stats</th>
+							}
 						</tr>
 						@foreach (var item in category.All)
 						{
-							<tr id="dataid:@item.Hash">
+							<tr id="dataid:@item.Hash" data-sets="@item.SetList">
+								<td width="60px">
+									@if (item.Icon != null) {
+										<img class="equip-icon" src="data:image/png;base64, @item.Icon" width="64" height="64"/>
+									}
+								</td>
 								<td width="120px">@item.Name <span class="linkme" data-id="@item.Hash">¶</span></td>
 								<td width="100">@Raw(item.Description)</td>
 								<td width="100px">@item.Rarity</td>
-								<td width="100px">
-									@foreach (var stat in @item.Stats)
-									{
-										<div class="stat-entry">
-											<span>@stat.Value</span>
-											<span class="stat-@stat.Icon">@stat.Name</span>
-										</div>
-									}
+								@if(category.Name == "Vestiges") {
+									<td width="100px">
+										@foreach (var set in @item.Sets!)
+										{
+											<div class="stat-entry">
+												<span>@Model.Sets[set].Name</span>
+											</div>
+										}
+									</td>
+									<td width="100px">
+										@foreach (var stat in @item.Stats)
+										{
+											<div class="stat-entry">
+												<span>@stat.Value</span>
+												<span class="stat-@stat.Icon">@stat.Name</span>
+											</div>
+										}
 
-								</td>
+									</td>
+								}
 							</tr>
 						}
 					</table>
@@ -426,12 +461,56 @@
 		const results = document.getElementById('results');
 		let matchedWords = [];
 
+		
+		let setFilter = new Set();
+		const vestigeTable = document.getElementById("equip-Vestiges");
+		const vestigeRows = [];
+
+		for (const vestigeTr of vestigeTable.getElementsByTagName("tr")) {
+			const dataSetsRaw =vestigeTr.getAttribute("data-sets"); 
+			vestigeRows.push({
+				tr: vestigeTr,
+				sets: new Set(JSON.parse(dataSetsRaw)),
+			});
+		}
+
+		function updateVestiges() {
+			if (setFilter.size == 0) {
+				for (const row of vestigeRows) {
+					row.tr.style.display = 'table-row';
+				}
+			} else {
+				for (const row of vestigeRows) {
+					row.tr.style.display = 'none';
+					for (const set of row.sets) {
+						if (setFilter.has(set)) {
+							row.tr.style.display = 'table-row';
+							break;
+						}
+					}
+				}
+
+			}
+		}
+
+		for (const setButton of document.querySelectorAll(".set-holder > span")) {
+			const guid = setButton.getAttribute("data-id");
+			setButton.addEventListener('click', _ => {
+				if (setButton.classList.toggle('generic-selected')) {
+					setFilter.add(guid);
+				} else {
+					setFilter.delete(guid);
+				}
+				updateVestiges();
+			});
+		}
+
 		function updateSearchResults() {
 			if (currentIndex < 0)
 				currentIndex = 0;
 			if (currentIndex >= matchedWords.length)
 				currentIndex = matchedWords.length - 1;
-			results.innerHTML = matchedWords.map((word, index) => `<div class="${index === currentIndex ? 'selected' : ''}">${word.key} (${word.page})</div>`).join('');
+			results.innerHTML = matchedWords.map((word, index) => `<div class="${index === currentIndex ? 'selected' : ''}">${word.key} (${word.tag})</div>`).join('');
 			results.style.display = 'block';
 		}
 

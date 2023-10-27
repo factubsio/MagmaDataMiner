@@ -1,13 +1,22 @@
-﻿using ShinyShoe;
+﻿using BubbleAssets;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.Extensions.FileSystemGlobbing.Internal.PathSegments;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Primitives;
+using ShinyShoe;
 using ShinyShoe.Ares;
+using ShinyShoe.EcsEventSystem;
 using ShinyShoe.SharedDataLoader;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using WikiGen;
+using WikiGen.Assets;
 
 namespace MagmaDataMiner
 {
@@ -38,7 +47,8 @@ namespace MagmaDataMiner
 
             if (token == SoBinarySerializerBase.Token.ExpectedTypeHint)
             {
-                throw new NotSupportedException();
+                hint = this.DeserializeExpectedTypeHint();
+				token = this.ReadToken();
             }
 
             object value;
@@ -72,7 +82,6 @@ namespace MagmaDataMiner
                 case SoBinarySerializerBase.Token.Guid:
                     throw new NotImplementedException("guid");
                     //value = this.DeserializeGuid(expectedType);
-                    break;
 
                 default:
                     throw new Exception();
@@ -80,6 +89,14 @@ namespace MagmaDataMiner
 
             return new(value);
         }
+
+        private Type DeserializeExpectedTypeHint()
+        {
+            string guid = this.reader.ReadString();
+			long fileID = this.reader.ReadInt64();
+			return MineDb.GetClassTypeByGuid(guid, fileID);
+        }
+
 
         private object DeserializeEnum(Type hint)
         {
@@ -119,6 +136,7 @@ namespace MagmaDataMiner
                 ushort len = this.reader.ReadUInt16();
 
                 FieldInfo fieldInfo = _fieldCache.GetFieldInfo(hint, fieldName)!;
+
 
                 if (fieldInfo == null)
                 {
@@ -235,6 +253,8 @@ namespace MagmaDataMiner
         public bool IsFlat => !IsAsset && !IsArray;
         public bool IsNull => ReferenceEqualityComparer.ReferenceEquals(Value, Null);
 
+        public bool IsEmptyLocString => String == "EmptyString-00000000-00000000000000000000000000000000";
+
         public MinedAsset Asset => (Value as MinedAsset)!;
 
         public string String => (Value as string)!;
@@ -245,7 +265,10 @@ namespace MagmaDataMiner
             {
                 return "";
             }
-            var raw = (String.Clone() as string)!;
+
+            var raw = (MineDb.Translate(String).Clone() as string)!;
+
+
             Loccer.ApplyLocalizationParams(ref raw, param =>
             {
                 if (Loccer.TryGetLocalizationParameterActionParamAsInt(param, out var value))
@@ -256,6 +279,8 @@ namespace MagmaDataMiner
                     return "<span class=\"text-added\">";
                 else if (param == "ca")
                     return "</span>";
+                else if (Loccer.TryGetLocalizationParameterActionDamageParam(param, out var damage))
+                    return damage.ToString();
                 else
                     return param;
 
@@ -302,6 +327,10 @@ namespace MagmaDataMiner
             else
             {
                 yield return new VisitedElement { key = name, levelDelta = 1, isObj = true, Count = node.Asset.fields.Count };
+                if (node.Asset.IsRoot)
+                {
+                    yield return new() { key = "DataId", value = node.Asset.DataId };
+                }
                 foreach (var elem in node.Asset.fields)
                 {
                     foreach (var n in Visit(elem.Value, elem.Key))
@@ -328,10 +357,15 @@ namespace MagmaDataMiner
             return Enumerate().Select(s => s.Deref());
         }
 
-        public MinedAsset Deref() => MineDb.Get(this["guid"].String);
+        public MinedAsset Deref() => MineDb.Get(new((long)this["fileID"].Value, this["guid"].String));
         public MinedAsset Deref(string v) => Asset.Deref(v);
 
-        internal bool Has(string v) => Asset.fields.ContainsKey(v);
+        public bool Has(string v) => Asset.fields.ContainsKey(v);
+
+        public string Translated()
+        {
+            return MineDb.Translate(String).Sanitized();
+        }
 
         public MinedField this[string index]
         {
@@ -446,38 +480,247 @@ namespace MagmaDataMiner
             return this[v].Deref();
         }
 
-        internal IEnumerable<MinedAsset> EnumerateAssetLinks(string v)
+        public IEnumerable<MinedAsset> EnumerateAssetLinks(string v)
         {
             return this[v].EnumerateAssetLinks();
         }
 
+        public bool IsRoot = false;
         public string AssetName = "";
         public string DataId = "";
-        public string Guid = "";
+        public string AssetGuid = "";
+        public long AssetFile;
         public string TypeName = "";
+    }
+
+    public class LocKeyTable
+    {
+        public string TableName = "";
+
+        public void Add(string k, long v) => keyToId.Add(k, v);
+        public bool TryGet(string k, out long id) => keyToId.TryGetValue(k, out id);
+
+        private readonly Dictionary<string, long> keyToId = new();
+    }
+    public class LocValTable
+    {
+        public string TableName = "";
+
+        public void Add(long k, string v) => idToStr.Add(k, v);
+        public string? this[long k] {
+            get
+            {
+                if (!idToStr.TryGetValue(k, out var val))
+                    return null;
+                return val;
+            }
+        }
+
+        private readonly Dictionary<long, string> idToStr = new();
+    }
+
+    public class LocValSet
+    {
+        public readonly Dictionary<string, LocValTable> Tables = new();
+
+        public string? Lookup(string table, long id) => Tables[table][id];
+    }
+
+    public class LocKeySet
+    {
+        public readonly List<LocKeyTable> Tables = new();
+
+        public (string, long) Lookup(string key)
+        {
+            foreach (var table in Tables)
+            {
+                if (table.TryGet(key, out var id))
+                {
+                    return (table.TableName, id);
+                }
+            }
+
+            throw new KeyNotFoundException(key);
+        }
     }
 
     public class MineDb
     {
-        private static readonly Dictionary<string, MinedAsset> db = new();
+
+        public const string draftableAssetName = "ClassesAndLoot/AbilityDrafts/DraftLists/NonClassAbilities_AbilityList";
+        public static IEnumerable<MinedAsset> CharacterClasses => AssetsByType("CharacterClassData");
+        public static IEnumerable<MinedAsset> DraftableBindings => Lookup(draftableAssetName).EnumerateAssetLinks("abilities");
+
+        public static readonly Dictionary<string, Sprite> IconsByName = new();
+
+        public static string? Base64Icon(string? iconName)
+        {
+            if (iconName == null)
+                return null;
+
+            string? base64Icon = null;
+
+            if (IconsByName.TryGetValue(iconName, out var iconSprite))
+            {
+                if (BlueprintAssetsContext.TryRenderSprite(iconSprite, out var icon))
+                {
+                    base64Icon = BlueprintAssetsContext.ImageToBase64(icon);
+                }
+            }
+
+            return base64Icon;
+        }
+
+        private static readonly Dictionary<AssetID, MinedAsset> db = new();
         private static readonly Dictionary<string, MinedAsset> byData = new();
         private static readonly Dictionary<string, MinedAsset> byName = new();
         private static FlatBufferAssetLoader? loader;
+        public static Assembly? asm;
+        private static StreamWriter? bobwr;
         private static readonly Dictionary<string, AssetLibraryManifest.Entry> nameToEntry = new();
+        private static readonly Dictionary<AssetID, AssetLibraryManifest.Entry> guidAndFileIDToEntry = new();
         private static readonly Dictionary<string, AssetLibraryManifest.Entry> dataIdToEntry = new();
         private static readonly Dictionary<string, List<AssetLibraryManifest.Entry>> baseDataTypeToEntries = new();
 
         private const long DefaultObjectFileID = 11400000L;
 
+        public static readonly LocKeySet LocKeys = new();
+
+        public static readonly Dictionary<string, LocValSet> Translations = new();
+
         public static Dictionary<string, List<AssetLibraryManifest.Entry>> ByType => baseDataTypeToEntries;
 
         public static IEnumerable<MinedAsset> All => db.Values;
+
+        public static string Translate(string lang, string key)
+        {
+            var (table, id) = LocKeys.Lookup(key);
+            return Translations[lang].Lookup(table, id) ?? key;
+        }
+        public static string Translate(string key)
+        {
+            if (GlobalLanguageSet.Language == null)
+            {
+                throw new Exception();
+            }
+
+            return Translate(GlobalLanguageSet.Language, key);
+        }
+
+        private static readonly AssetContext assets = new();
 
         public static void Init(string path)
         {
             loader = new FlatBufferAssetLoader(path);
             if (loader == null)
                 throw new NullReferenceException();
+
+            TextureDecoder.ForceLoaded();
+
+            bobwr = File.CreateText(@"D:\bobber.txt");
+
+            var streamingAssetsDir = Path.GetDirectoryName(Path.GetDirectoryName(path))!;
+            var locDir = Path.Combine(streamingAssetsDir, "aa", "StandaloneWindows64");
+
+            assets.AddBundle(Path.Combine(locDir, "localization-assets-shared_assets_all.bundle"));
+            //assets.AddBundle(Path.Combine(locDir, ""));
+            List<string> translationBundles = new();
+
+            string criticalAssetsBundle = "";
+            string allAssetsBundle = "";
+
+            foreach (var maybe in Directory.GetFiles(locDir)) {
+                if (maybe.Contains("localization-string-tables-"))
+                {
+                    translationBundles.Add(Path.GetFileName(maybe));
+                    assets.AddBundle(maybe);
+                }
+
+                if (maybe.Contains("artemisuigroup_assets_all_"))
+                {
+                    allAssetsBundle = Path.GetFileName(maybe);
+                    assets.AddBundle(maybe);
+                }
+
+                if (maybe.Contains("mainmenuloadingcriticalgroup_assets_all_"))
+                {
+                    criticalAssetsBundle = Path.GetFileName(maybe);
+                    assets.AddBundle(maybe);
+                }
+            }
+
+            foreach (var obj in assets.assetsByBundle[criticalAssetsBundle][0].ObjectIndex.Where(x => x.ClassType == ClassIDType.Sprite))
+            {
+                UnityAssetReference assetRef = new(0, obj.m_PathID);
+                var ptrToSprite = new PPtr<Sprite>(assetRef, obj.Owner);
+                var sprite = ptrToSprite.Object;
+                //bobwr.Write($"adding icon: {sprite.Name}\n");
+                IconsByName.Add(sprite.Name, sprite);
+            }
+
+            foreach (var obj in assets.assetsByBundle[allAssetsBundle][0].ObjectIndex.Where(x => x.ClassType == ClassIDType.Sprite))
+            {
+                UnityAssetReference assetRef = new(0, obj.m_PathID);
+                var ptrToSprite = new PPtr<Sprite>(assetRef, obj.Owner);
+                var sprite = ptrToSprite.Object;
+                //bobwr.Write($"adding icon: {sprite.Name}\n");
+                if (!IconsByName.ContainsKey(sprite.Name))
+                {
+                    IconsByName.Add(sprite.Name, sprite);
+                }
+            }
+
+            var keyToIdAssets = assets.assetsByBundle["localization-assets-shared_assets_all.bundle"][0];
+
+            foreach (var obj in  keyToIdAssets.ObjectIndex.Where(x => x.ClassType == ClassIDType.MonoBehaviour))
+            {
+                var sharedTable = AssetMining.MineMonoBehaviour(obj.serializedType.TypeTree, new AssetFileReader(obj))["Base"].Asset;
+                LocKeyTable table = new()
+                {
+                    TableName = sharedTable["m_TableCollectionName"].String
+                };
+
+                foreach (var entry in sharedTable["m_Entries"].Enumerate().Select(x => x.Asset))
+                {
+                    table.Add(entry["m_Key"].String, (long)entry["m_Id"].Value);
+                }
+
+                LocKeys.Tables.Add(table);
+            }
+
+            foreach (var lang in translationBundles)
+            {
+
+                var translationBundle = assets.assetsByBundle[lang][0];
+                foreach (var obj in translationBundle.ObjectIndex.Where(x => x.ClassType == ClassIDType.MonoBehaviour))
+                {
+                    //var str = TreeDumper.ReadTypeString(obj.serializedType.TypeTree, new AssetFileReader(obj));
+                    //bobwr.Write(str);
+                    //bobwr.Write("\n");
+
+                    var stringTable = AssetMining.MineMonoBehaviour(obj.serializedType.TypeTree, new AssetFileReader(obj))["Base"].Asset;
+                    var suffix = stringTable["m_LocaleId"]["m_Code"].String;
+                    if (!Translations.TryGetValue(suffix, out var locVals))
+                    {
+                        locVals = new();
+                        Translations.Add(suffix, locVals);
+                    }
+
+                    LocValTable table = new()
+                    {
+                        TableName = stringTable["m_Name"].String.Replace($"_{suffix}", "")
+                    };
+
+                    locVals.Tables.Add(table.TableName, table);
+
+                    foreach (var entry in stringTable["m_TableData"].Enumerate().Select(x => x.Asset))
+                    {
+                        table.Add((long)entry["m_Id"].Value, entry["m_Localized"].String);
+                    }
+                }
+            }
+
+
 
             var manifestAsset = loader.LoadAsset<FbTextAsset>(FbAssetType.FbTextAsset, AssetLibraryServerDesktop.ManifestFileName);
 
@@ -488,7 +731,9 @@ namespace MagmaDataMiner
 
             var manifest = JsonSerializerShared.Deserialize<AssetLibraryManifest>(manifestAsset.Value.Text, null);
 
-            AssetLibraryServerDesktop.SetManifestClassTypes(manifest, "Assembly-CSharp");
+            //AssetLibraryServerDesktop.SetManifestClassTypes(manifest, "Assembly-CSharp");
+
+            asm = Assembly.LoadFile(@"C:\Program Files (x86)\Steam\steamapps\common\Inkbound\Inkbound_Data\Managed\Assembly-CSharp.dll");
 
             foreach (AssetLibraryManifest.Entry entry in manifest.entries)
             {
@@ -496,58 +741,67 @@ namespace MagmaDataMiner
                 {
                     nameToEntry[entry.name] = entry;
                 }
+
+                guidAndFileIDToEntry.Add(entry.assetID, entry);
+
                 if (!string.IsNullOrEmpty(entry.dataId))
                 {
                     dataIdToEntry.Add(entry.dataId, entry);
                 }
+                if (entry.className != null)
                 {
                     List<AssetLibraryManifest.Entry> list;
-                    if (!baseDataTypeToEntries.TryGetValue(entry.classType.Name, out list!))
+                    var typeName = Path.GetExtension(entry.className)[1..];
+                    if (!baseDataTypeToEntries.TryGetValue(typeName, out list!))
                     {
                         list = new List<AssetLibraryManifest.Entry>();
-                        baseDataTypeToEntries.Add(entry.classType.Name, list);
+                        baseDataTypeToEntries.Add(typeName, list);
                     }
                     list.Add(entry);
                 }
             }
 
-
-
         }
 
-        public static void Add(MinedAsset asset, AssetLibraryManifest.Entry entry)
+        private static void Add(MinedAsset asset, AssetLibraryManifest.Entry entry)
         {
-            db[entry.assetID._guid] = asset;
+            db[entry.assetID] = asset;
             byData[entry.dataId] = asset;
             byName[entry.name] = asset;
         }
 
-        public static MinedAsset Get(string guid) => db[guid];
+        public static MinedAsset Get(AssetID id) => db[id];
 
         public static MinedAsset Action(string dataId) => byData[dataId];
 
         public static bool TryGetByData(string dataId, out MinedAsset asset)
         {
-            return byData.TryGetValue(dataId, out asset);
+            return byData.TryGetValue(dataId, out asset!);
         }
 
-        public static MinedAsset Get(AssetLibraryManifest.Entry entry) => Get(entry.assetID._guid);
 
         public static MinedAsset GetOrLoadAsset(AssetLibraryManifest.Entry entry)
         {
-            if (!MineDb.TryGetByData(entry.dataId, out var asset))
+            if (!MineDb.db.TryGetValue(entry.assetID, out var asset))
             {
-                var type = entry.classType;
+                var type = asm?.GetType(entry.className);
+
+                if (type is null)
+                {
+                    throw new TypeLoadException();
+                }
 
                 var blob = AssetLibraryServerDesktop.LoadYamlTextOrBinaryCommon(loader!, entry);
                 var stream = blob.binaryData!;
 
                 Miner miner = new(stream);
                 asset = miner.Mine(type).Asset;
+                asset.IsRoot = true;
                 asset.AssetName = entry.name;
                 asset.DataId = entry.dataId;
-                asset.Guid = entry.assetID._guid;
-                asset.TypeName = entry.classType.FullName!;
+                asset.AssetGuid = entry.assetID._guid;
+                asset.AssetFile = entry.assetID._fileID;
+                asset.TypeName = entry.className;
 
                 //output.WriteLine("loaded: " + entry.dataId);
 
@@ -569,16 +823,47 @@ namespace MagmaDataMiner
             {
                 GetOrLoadAsset(entry);
             }
+
         }
 
         public static MinedAsset Lookup(string v) => byName[v];
 
-        public static IEnumerable<MinedAsset> AssetsByType(string v) => ByType[v].Select(x => Get(x));
+        public static IEnumerable<MinedAsset> AssetsByType(string v) => ByType[v].Select(x => Get(x.assetID));
 
         public static void LoadAll()
         {
             foreach (var type in baseDataTypeToEntries.Keys)
+            {
+                bobwr?.Write($"Loading type: {type}\n");
                 LoadAll(type);
+            }
+            bobwr?.Flush();
+            bobwr?.Close();
+        }
+
+        public static IDisposable ActivateLanguage(string language)
+        {
+            return new GlobalLanguageSet(language);
+        }
+
+        public static Type GetClassTypeByGuid(string guid, long fileID)
+        {
+            return asm?.GetType(guidAndFileIDToEntry[new(fileID, guid)].className) ?? throw new Exception();
+        }
+    }
+
+    public class GlobalLanguageSet : IDisposable
+    {
+        public static string? Language = null;
+
+        public GlobalLanguageSet(string language)
+        {
+            Language = language;
+        }
+
+        public void Dispose()
+        {
+            Language = null;
         }
     }
 }

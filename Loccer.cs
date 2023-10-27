@@ -1,8 +1,10 @@
 ﻿using ShinyShoe;
+using ShinyShoe.Ares;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace MagmaDataMiner
@@ -10,6 +12,47 @@ namespace MagmaDataMiner
     internal class Loccer
     {
 		private static int _applyParamsDepth = 0;
+		private static StringBuilder builder = new();
+        private static List<TagReplacement> replacements = new ();
+
+        private static readonly Dictionary<string, string> directReplacements = new Dictionary<string, string>()
+        {
+            { "oa", "<span class=\"text-added\">" },
+            { "ca", "</span>" },
+            { "se", "<span class=\"text-se\">" },
+            { "/se", "</span>" },
+            { "manaresource", "will" },
+        };
+
+        private static List<TagReplacement> Parse(string input)
+        {
+
+			replacements.Clear();
+
+            string pattern = @"\[(.*?)\]";
+            MatchCollection matches = Regex.Matches(input, pattern);
+
+            foreach (Match match in matches)
+            {
+                string tag = match.Groups[1].Value;
+                if (directReplacements.ContainsKey(tag))
+                {
+                    replacements.Add(new(tag, match.Index, match.Length, true));
+                }
+                else
+                {
+                    replacements.Add(new(tag, match.Index, match.Length, false));
+                }
+            }
+
+			return replacements;
+
+        }
+
+		public record class Context(MinedAsset Ability, int BaseDamage);
+
+		public static Context? Current;
+
         public static void ApplyLocalizationParams(ref string translation, Func<string, object> getParam, bool allowLocalizedParameters = true)
 		{
 			if (translation == null)
@@ -20,45 +63,79 @@ namespace MagmaDataMiner
 			{
 				return;
 			}
-			_applyParamsDepth++;
-			//LocalizationUtil.ApplyTranslationReplacements(ref translation);
-			int length = translation.Length;
-			int num = 0;
-			while (num >= 0 && num < translation.Length)
-			{
-				int num2 = translation.IndexOf("{[", num);
-				if (num2 < 0)
+			var tags = Parse(translation);
+			builder.Clear();
+			builder.Append(translation);
+            for (int i = tags.Count - 1; i >= 0; i--)
+            {
+                var tag = tags[i];
+				string value;
+
+                if (tag.IsDirect)
+                {
+					value = directReplacements[tag.Tag];
+                }
+				else if (tag.Tag == "ability.damage")
 				{
-					break;
-				}
-				int num3 = translation.IndexOf("]}", num2);
-				if (num3 < 0)
-				{
-					break;
-				}
-				int num4 = translation.IndexOf("{[", num2 + 1);
-				if (num4 > 0 && num4 < num3)
-				{
-					num = num4;
+					value = (Current?.BaseDamage ?? 0).ToString();
 				}
 				else
 				{
-					int num5 = (translation[num2 + 2] == '#') ? 3 : 2;
-					string param = translation.Substring(num2 + num5, num3 - num2 - num5);
-					string text = (string)getParam(param);
-					if (text != null && allowLocalizedParameters)
-					{
-						string oldValue = translation.Substring(num2, num3 - num2 + 2);
-						translation = translation.Replace(oldValue, text);
-						num = num2 + text.Length;
-					}
-					else
-					{
-						num = num3 + 2;
-					}
+					value = (string)getParam(tag.Tag);
+
 				}
-			}
-			_applyParamsDepth--;
+
+                builder.Remove(tag.Begin, tag.Length).Insert(tag.Begin, value);
+            }
+
+			translation = builder.ToString();
+
+            //Console.WriteLine("Modified string: " + builder.ToString());
+            //Console.WriteLine("Tags: ");
+            //foreach (var tag in tags)
+            //{
+            //    Console.WriteLine("Tag: " + tag.Tag + ", Start: " + tag.Begin + ", Length: " + tag.Length + ", Direct: " + tag.IsDirect);
+            //}
+
+			//_applyParamsDepth++;
+			////LocalizationUtil.ApplyTranslationReplacements(ref translation);
+			//int length = translation.Length;
+			//int num = 0;
+			//while (num >= 0 && num < translation.Length)
+			//{
+			//	int num2 = translation.IndexOf("{[", num);
+			//	if (num2 < 0)
+			//	{
+			//		break;
+			//	}
+			//	int num3 = translation.IndexOf("]}", num2);
+			//	if (num3 < 0)
+			//	{
+			//		break;
+			//	}
+			//	int num4 = translation.IndexOf("{[", num2 + 1);
+			//	if (num4 > 0 && num4 < num3)
+			//	{
+			//		num = num4;
+			//	}
+			//	else
+			//	{
+			//		int num5 = (translation[num2 + 2] == '#') ? 3 : 2;
+			//		string param = translation.Substring(num2 + num5, num3 - num2 - num5);
+			//		string text = (string)getParam(param);
+			//		if (text != null && allowLocalizedParameters)
+			//		{
+			//			string oldValue = translation.Substring(num2, num3 - num2 + 2);
+			//			translation = translation.Replace(oldValue, text);
+			//			num = num2 + text.Length;
+			//		}
+			//		else
+			//		{
+			//			num = num3 + 2;
+			//		}
+			//	}
+			//}
+			//_applyParamsDepth--;
 		}
 		public static bool TryGetLocalizationParameterActionParamAsString(string param, out string value)
 		{
@@ -294,8 +371,28 @@ namespace MagmaDataMiner
 			return result;
 		}
 
+		internal static bool TryGetLocalizationParameterActionDamageParam(string param, out int damage)
+		{
+
+			damage = 0;
+			return false;
+		}
+
 		// Token: 0x0600211C RID: 8476 RVA: 0x00085AF4 File Offset: 0x00083CF4
 
 
+	}
+
+    internal record struct TagReplacement(string Tag, int Begin, int Length, bool IsDirect)
+    {
+        public static implicit operator (string Tag, int Begin, int Length, bool IsDirect)(TagReplacement value)
+        {
+            return (value.Tag, value.Begin, value.Length, value.IsDirect);
+        }
+
+        public static implicit operator TagReplacement((string Tag, int Begin, int Length, bool IsDirect) value)
+        {
+            return new TagReplacement(value.Tag, value.Begin, value.Length, value.IsDirect);
+        }
     }
 }

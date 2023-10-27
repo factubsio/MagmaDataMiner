@@ -7,8 +7,12 @@ using System.Text;
 
 using MagmaDataMiner;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using ShinyShoe.Ares.ConstantNodes;
 
 Console.WriteLine("Hello, World!");
+
+
+Dictionary<long, MinedAsset> nodes = new();
 
 using var log = File.Open(@"D:\out.txt", FileMode.Truncate);
 using var output = new StreamWriter(log);
@@ -18,354 +22,46 @@ const string path = @"C:\Program Files (x86)\Steam\steamapps\common\Inkbound\Ink
 
 const bool web = true;
 
-Console.WriteLine("manifest loaded");
-
-
-Console.WriteLine("class type set"); ;
-
 MineDb.Init(path);
 
 MineDb.LoadAll();
-//MineDb.LoadAll("ActionData");
-//MineDb.LoadAll("EquipmentData");
-//MineDb.LoadAll("AbilityUpgradeData");
-//MineDb.LoadAll("CharacterClassData");
-//MineDb.LoadAll("StatusEffectData");
-//MineDb.LoadAll("HelperData");
-//MineDb.LoadAll("AbilityData");
-//MineDb.LoadAll("StageMutatorData");
 
-//MineDb.LoadAll("AbilityListData");
-//MineDb.LoadAll("LootListData");
-
-//MineDb.LoadAll("Chunk");
-//MineDb.LoadAll("ChunkSet");
-//MineDb.LoadAll("SocketContent");
-//MineDb.LoadAll("SocketContentSet");
-//MineDb.LoadAll("Stage");
-//MineDb.LoadAll("UnitData");
-//MineDb.LoadAll("AIBehaviorData");
-//MineDb.LoadAll("StageMutatorData");
-
-output.WriteLine("TYPES:");
-foreach (var key in MineDb.ByType.OrderBy(k => k.Key))
-{
-    output.WriteLine($"{key.Key}");
-}
-output.WriteLine("");
-output.WriteLine("");
-output.WriteLine("TYPES:");
-foreach (var key in MineDb.ByType.OrderBy(k => k.Key))
-{
-    output.WriteLine($"{key.Key}");
-    foreach (var e in key.Value.OrderBy(e => e.name))
-    {
-        output.WriteLine($"    {e.assetID._guid}   {e.dataId}    {key.Key}: {e.name}");
-    }
-}
-
-output.Flush();
-
-var chunkContentSet = MineDb.Action("d7B011gC");
-
-
-    //foreach (var stage in MineDb.AssetsByType("Stage"))
-    //{
-    //    PrintAsset(stage, output);
-    //    output.WriteLine("");
-    //    output.WriteLine("");
-
-    //    var spawnSet = stage.Deref("_spawnChunkSet");
-    //    PrintAsset(spawnSet, output);
-
-    //    var spawnChunk = spawnSet["_chunks"].At(0).Deref();
-    //    PrintAsset(spawnChunk, output);
-
-    //    output.WriteLine("");
-    //    output.WriteLine("");
-    //    output.WriteLine("");
-    //    output.WriteLine("");
-    //    output.WriteLine("");
-    //}
-
-
-    const string draftableAssetName = "ClassesAndLoot/AbilityDrafts/DraftLists/NonClassAbilities_AbilityList";
-
-var draftableAbilities = MineDb.Lookup(draftableAssetName).EnumerateAssetLinks("abilities");
-var charClasses = MineDb.AssetsByType("CharacterClassData");
-
-AbilitiesModel model = new();
-foreach (var charClass in charClasses)
-{
-    if (charClass["className"].String == "Starter Class")
-    {
-        continue;
-    }
-
-    AbilitySource source = new();
-    source.Source = charClass["className"].String;
-    foreach (var abilityData in charClass.EnumerateAssetLinks("starterAbilities"))
-    {
-        source.AddAbility(abilityData, model.SearchIndex);
-    }
-    model.Sources.Add(source);
-}
-
-AbilitySource draftable = new()
-{
-    Source = "Draftable"
-};
-foreach (var abilityData in draftableAbilities.OrderBy(d => d["abilityName"].String))
-    draftable.AddAbility(abilityData, model.SearchIndex);
-model.Sources.Add(draftable);
-
-var vestiges = new EquipmentCategory("Vestiges", new());
-var consumables = new EquipmentCategory("Consumables", new());
-var trinkets = new EquipmentCategory("Trinkets", new());
-
-model.Equipment.Add(vestiges);
-model.Equipment.Add(consumables);
-model.Equipment.Add(trinkets);
-
-foreach (var trinket in MineDb.AssetsByType("TrinketData").OrderBy(x => x["trinketName"].String))
-{
-    Vestige trinketModel = new(
-        trinket["trinketName"].String.Sanitized(),
-        trinket["description"].Localized(),
-        RarityType.Common,
-        new(),
-        trinket.DataId);
-    trinkets.All.Add(trinketModel);
-    model.SearchIndex.Add(new(trinketModel.Name, "equip", "Trinkets", trinketModel.Hash));
-}
-
-foreach (var vestige in MineDb.AssetsByType("EquipmentData").OrderBy(x => x["rarity"].Value).ThenBy(x => x["equipmentName"].String))
-{
-
-    var eType = (EquipmentType)vestige["equipmentType"].Value;
-
-    EquipmentCategory? equipCat = eType switch
-    {
-        EquipmentType.Accessory => vestiges,
-        EquipmentType.WorldItem => consumables,
-        _ => null,
-    };
-
-
-    if (equipCat == null)
-    {
-        continue;
-    }
-
-    List<StatGain> stats = new();
-
-    if (eType == EquipmentType.Accessory)
-    {
-        foreach (var x in vestige["statEntries"]["statEntries"].Enumerate())
-        {
-            var stat = x.Deref("entryStatData");
-            if (stat["statName"].IsNull || stat["replacementString"].IsNull)
-            {
-                continue;
-            }
-            stats.Add(new(x["entryValue"].Int, stat["statName"].String));
-        }
-    }
-
-    Vestige equipModel = new(
-        vestige["equipmentName"].String.Sanitized(),
-        vestige["description"].Localized(),
-        (RarityType)vestige["rarity"].Value,
-        stats,
-        vestige.DataId);
-    equipCat.All.Add(equipModel);
-    model.SearchIndex.Add(new(equipModel.Name, "equip", equipCat.Name, equipModel.Hash));
-}
-
-HashSet<string> brainsDone = new();
-
-//foreach (var unitData in MineDb.AssetsByType("UnitData"))
+//output.WriteLine("TYPES:");
+//foreach (var key in MineDb.ByType.OrderBy(k => k.Key))
 //{
-//    var ai = unitData.Deref("aiBehaviorData");
-//    if (!brainsDone.Add(ai.AssetName)) { continue; }
-
-//    Dictionary<string, AiState> states = new();
-//    Enemy unit = new(unitData["unitName"].String, new(), new("on_spawn", new(), new()));
-//    model.Enemies.Add(unit);
-
-//    output.WriteLine(">>>" + unit.Name);
-//    //PrintAsset(ai, output);
-
-
-//    unit.Phases.Add(new("default", new()));
-
-//    AddToPhase(unit.Phases[0], ai["aiStates"]["entries"]);
-
-//    var spawnBlocks = ai["aiOnSpawnEvaluationBlocks"]["entries"];
-//    if (spawnBlocks.Length > 0)
-//    {
-//        foreach (var blockData in spawnBlocks.Enumerate())
-//        {
-//            var block = ParseBlock(blockData);
-//            unit.SpawnAction.Blocks.Add(block);
-//        }
-//    }
-
-//    AiActionBlock ParseBlock(MinedField blockData)
-//    {
-//        AiActionBlock block = new(new());
-//        foreach (var aiAction in blockData["actions"].Enumerate())
-//        {
-//            var type = (AIActionType)aiAction["actionType"].Value;
-//            string name;
-//            MinedAsset? abilityData = null;
-//            MinedAsset? moveData = null;
-//            AiStateTransition? targetState = null;
-//            string description = "";
-
-//            if (type == AIActionType.Ability)
-//            {
-//                abilityData = aiAction["aiAbilityData"].Deref("abilityData");
-//                name = abilityData["abilityName"].String;
-//                if (string.IsNullOrEmpty(name))
-//                {
-//                    name = Path.GetFileName(abilityData.AssetName);
-//                }
-//            }
-//            else if (type == AIActionType.Movement)
-//            {
-//                moveData = aiAction["aiMovementData"].Asset;
-//                name = "Movement";
-//            }
-//            else
-//            {
-//                name = "_unknown_";
-//            }
-
-//            if (aiAction.Has("stateTransition"))
-//            {
-//                var target = aiAction["stateTransition"]["transitionToStateName"].String;
-//                if (!string.IsNullOrEmpty(target))
-//                {
-//                    targetState = new(states[target], "");
-//                }
-//            }
-
-//            if (abilityData is not null)
-//            {
-//                description = abilityData["description"].Localized();
-//            }
-
-//            AiAction action = new(name, description, targetState);
-//            //output.WriteLine($"adding action ({name})");
-//            block.Candidates.Add(action);
-//        }
-//        return block;
-//    }
-
-//    void AddToPhase(AiPhase phase, MinedField stateList)
-//    {
-//        foreach (var aiState in stateList.Enumerate())
-//        {
-//            AiState state = new(aiState["name"].String, new(), new());
-//            states[state.Name] = state;
-//            phase.States.Add(state);
-//        }
-
-//        foreach (var aiState in stateList.Enumerate())
-//        {
-//            AiState state = states[aiState["name"].String];
-
-//            foreach (var blockData in aiState["evaluationBlocks"]["entries"].Enumerate())
-//            {
-//                state.Blocks.Add(ParseBlock(blockData));
-//            }
-//        }
-
-//    }
-
+//    output.WriteLine($"{key.Key}");
 //}
-
-var baneList = MineDb.AssetsByType("StageMutatorData");
-
-foreach (var baneData in baneList)
-{
-    if (baneData["isHiddenFromUI"].Bool) { continue; }
-
-    var helper = baneData.Deref("helperData");
-
-    //output.WriteLine(baneData.AssetName);
-    //output.WriteLine(helper["titleKey"].String);
-    //output.WriteLine(helper["descriptionKey"].String);
-    //PrintAsset(baneData, output);
-
-    int gold = baneData["runCurrencyGainedOnSelection"].Int;
-    string currencyType = "kwillings";
-    if (gold == 0)
-    {
-        gold = baneData["glyphsGainedOnSelection"].Int;
-        currencyType = "glyphs";
-    }
-
-    Bane bane = new(
-            helper["titleKey"].Localized(),
-            helper["descriptionKey"].Localized(),
-            gold,
-            currencyType,
-            baneData.AssetName.StartsWith("DailyChallenge"),
-            baneData.DataId);
-    model.Banes.Add(bane);
-    model.SearchIndex.Add(new(bane.Name, "other", bane.IsRunMutator ? "run-mutators" : "banes", bane.Hash));
-}
-
-if (web)
-{
-    WebGen.Bob(model);
-}
-
-
-//foreach (var bob in MineDb.ByType["AbilityListData"])
+//output.WriteLine("");
+//output.WriteLine("");
+//output.WriteLine("TYPES:");
+//foreach (var key in MineDb.ByType.OrderBy(k => k.Key))
 //{
-//    Console.WriteLine(bob.name);
-//    foreach (var ability in MineDb.Get(bob)["abilities"].EnumerateAssetLinks())
+//    output.WriteLine($"{key.Key}");
+//    foreach (var e in key.Value.OrderBy(e => e.name))
 //    {
-//        Console.WriteLine(ability.AssetName);
+//        output.WriteLine($"    {e.assetID._guid}   {e.dataId}    {key.Key}: {e.name}");
 //    }
 //}
 
-//Console.WriteLine(bonk["abilityName"].String);
-//Console.WriteLine("==========");
-//Console.WriteLine();
-//foreach (var augment in bonk["mainUpgrades"].EnumerateAssetLinks())
-//{
-//    var effect = augment.Deref("statusEffect");
-//    var help = effect.Deref("helperData");
+//output.Flush();
 
-//    PrintAsset(effect, output);
-//    PrintAsset(help, output);
 
-//    Console.WriteLine($" * {help["titleKey"].String}");
-//    Console.WriteLine("   -------");
-//    Console.WriteLine($"     > {augment["rarity"].Value}");
-//    Console.WriteLine($"     > duplicates: {augment["allowDuplicates"].Value}");
-//    var raw = (help["descriptionKey"].String.Clone() as string)!;
-//    Loccer.ApplyLocalizationParams(ref raw, param =>
-//    {
-//        if (Loccer.TryGetLocalizationParameterActionParamAsInt(param, out var value))
-//            return value.ToString();
-//        else if (Loccer.TryGetLocalizationParameterStatusEffectProcChance(param, out var value2))
-//            return value2.ToString();
-//        else
-//            return param;
 
-//    });
-//    foreach (var line in raw.Split("\n", StringSplitOptions.RemoveEmptyEntries))
-//        Console.WriteLine($"     | {line}");
+var graphs = MineDb.AssetsByType("ActionGraph");
 
-//    Console.WriteLine();
-//}
 
-void Indent(int level, TextWriter output)
+
+using (MineDb.ActivateLanguage("en-US"))
+{
+    AbilitiesModel model = GenerateModel(MineDb.DraftableBindings, MineDb.CharacterClasses);
+
+    if (web)
+    {
+        WebGen.Bob(model);
+    }
+}
+
+static void Indent(int level, TextWriter output)
 {
     for (int i = 0; i < level; i++)
     {
@@ -374,7 +70,7 @@ void Indent(int level, TextWriter output)
 }
 
 
-int PrintAsset(MinedAsset asset, TextWriter output)
+static int PrintAsset(MinedAsset asset, TextWriter output)
 {
     int level = 0;
 
@@ -408,3 +104,175 @@ int PrintAsset(MinedAsset asset, TextWriter output)
 
     return level;
 }
+
+AbilitiesModel GenerateModel(IEnumerable<MinedAsset> draftableAbilities, IEnumerable<MinedAsset> charClasses)
+{
+    AbilitiesModel model = new();
+    foreach (var charClass in charClasses)
+    {
+        PrintAsset(charClass, output);
+        if ((CharacterClassType)charClass["classType"].Value == CharacterClassType.C06_StarterClass)
+        {
+            continue;
+        }
+
+        AbilitySource source = new();
+        source.Source = charClass["className"].Translated();
+        foreach (var abilityData in charClass.EnumerateAssetLinks("starterAbilities"))
+        {
+            source.AddAbility(abilityData, model.SearchIndex);
+        }
+        model.Sources.Add(source);
+    }
+
+    AbilitySource draftable = new()
+    {
+        Source = "Draftable"
+    };
+    foreach (var abilityData in draftableAbilities.OrderBy(d => d["abilityName"].String))
+    {
+        draftable.AddAbility(abilityData, model.SearchIndex);
+    }
+    model.Sources.Add(draftable);
+
+    var vestiges = new EquipmentCategory("Vestiges", new());
+    var consumables = new EquipmentCategory("Consumables", new());
+    var trinkets = new EquipmentCategory("Trinkets", new());
+
+    HashSet<string> UsedSets = new();
+
+    foreach (var setData in MineDb.AssetsByType("VestigeSetData").OrderBy(x => x["m_Name"].String))
+    {
+        var helper = setData.Deref("helperData");
+
+        List<VestigeSetRank> ranks = new();
+
+        foreach (var rankData in setData["setBonusTiers"].Enumerate())
+        {
+            var rankHelper = rankData["helperData"].At(0).Deref();
+            ranks.Add(new(
+                rankData["statThreshold"].Int,
+                rankHelper["descriptionKey"].Localized()
+            ));
+        }
+
+        VestigeSet set = new(
+            helper["titleKey"].Translated(),
+            ranks);
+
+        model.Sets.Add(setData.AssetGuid, set);
+    }
+
+
+    model.Equipment.Add(vestiges);
+    model.Equipment.Add(consumables);
+    model.Equipment.Add(trinkets);
+
+    foreach (var trinket in MineDb.AssetsByType("TrinketData").OrderBy(x => x["trinketName"].String))
+    {
+        Equipment trinketModel = new(
+            trinket["trinketName"].Translated(),
+            trinket["description"].Localized(),
+            RarityType.Common,
+            new(),
+            null,
+            null,
+            trinket.DataId);
+        trinkets.All.Add(trinketModel);
+        model.SearchIndex.Add(new(trinketModel.Name, "trinket", "equip", "Trinkets", trinketModel.Hash));
+    }
+
+    foreach (var vestige in MineDb.AssetsByType("EquipmentData").OrderBy(x => x["rarity"].Value).ThenBy(x => x["equipmentName"].String))
+    {
+
+        var eType = (EquipmentType)vestige["equipmentType"].Value;
+
+        List<string>? sets = null;
+
+        EquipmentCategory? equipCat = eType switch
+        {
+            EquipmentType.Accessory => vestiges,
+            EquipmentType.WorldItem => consumables,
+            _ => null,
+        };
+
+
+        if (equipCat == null)
+        {
+            continue;
+        }
+
+        List<StatGain> stats = new();
+
+        if (eType == EquipmentType.Accessory)
+        {
+            sets = new();
+
+            foreach (var x in vestige["vestigeSetDatas"].Enumerate())
+            {
+                var setGuid = x["guid"].String;
+                UsedSets.Add(setGuid);
+                sets.Add(setGuid);
+            }
+
+            foreach (var x in vestige["statEntries"]["statEntries"].Enumerate())
+            {
+                var stat = x.Deref("entryStatData");
+                if (stat["statName"].IsNull || stat["replacementString"].IsNull || stat["replacementString"].IsEmptyLocString)
+                {
+                    continue;
+                }
+                stats.Add(new(x["entryValue"].Int, stat["statName"].Translated()));
+            }
+        }
+
+        Equipment equipModel = new(
+            vestige["equipmentName"].Translated(),
+            vestige["description"].Localized(),
+            (RarityType)vestige["rarity"].Value,
+            stats,
+            sets,
+            MineDb.Base64Icon(vestige["assetAddressIcon"]["m_SubObjectName"].String),
+            vestige.DataId);
+        equipCat.All.Add(equipModel);
+        model.SearchIndex.Add(new(equipModel.Name, eType == EquipmentType.Accessory ? "vestige" : "consumable", "equip", equipCat.Name, equipModel.Hash));
+    }
+
+    var toRemove = model.Sets.Keys.Where(x => !UsedSets.Contains(x)).ToArray();
+    foreach (var remove in toRemove)
+    {
+        model.Sets.Remove(remove);
+    }
+
+    HashSet<string> brainsDone = new();
+
+    var baneList = MineDb.AssetsByType("StageMutatorData");
+
+    foreach (var baneData in baneList)
+    {
+        if (baneData["isHiddenFromUI"].Bool) { continue; }
+
+        var helper = baneData.Deref("helperData");
+
+        int gold = baneData["runCurrencyGainedOnSelection"].Int;
+        string currencyType = "kwillings";
+        if (gold == 0)
+        {
+            gold = baneData["glyphsGainedOnSelection"].Int;
+            currencyType = "glyphs";
+        }
+
+        Bane bane = new(
+                helper["titleKey"].Localized(),
+                helper["descriptionKey"].Localized(),
+                gold,
+                currencyType,
+                baneData.AssetName.StartsWith("DailyChallenge"),
+                baneData.DataId);
+        model.Banes.Add(bane);
+        model.SearchIndex.Add(new(bane.Name, "misc", "other", bane.IsRunMutator ? "run-mutators" : "banes", bane.Hash));
+    }
+
+    return model;
+}
+
