@@ -19,9 +19,16 @@ namespace MagmaDataMiner
     {
         public Point Position;
         public string ShinyType = "";
+        public string ShinyTypeFull = "";
         public readonly Dictionary<string, MinedPort> Ports = new();
         public Color Color = Color.DarkGray;
         public bool IsDark = false;
+        public readonly MinedAsset Data;
+
+        public MinedNode(MinedAsset data)
+        {
+            Data = data;
+        }
 
         public readonly Dictionary<string, object> Parameters = new();
 
@@ -32,6 +39,7 @@ namespace MagmaDataMiner
     {
         public record struct Link(MinedNode Node, string Target);
 
+        public readonly MinedNode Node;
         public readonly List<Link> Links = new();
         public readonly string Direction;
         public readonly string ConnectionType;
@@ -41,8 +49,9 @@ namespace MagmaDataMiner
 
         public bool IsStrict => Constraint == "Strict";
 
-        public MinedPort(string name, string direction, string connectionType, string constraint, string typeName)
+        public MinedPort(MinedNode owner, string name, string direction, string connectionType, string constraint, string typeName)
         {
+            Node = owner;
             Name = name;
             this.Direction = direction;
             this.ConnectionType = connectionType;
@@ -61,9 +70,9 @@ namespace MagmaDataMiner
             Name = assetName;
         }
     }
-
-    public class AresSimulator
+    public static class AresParser
     {
+
         private static Dictionary<long, MinedAsset> nodes = new();
         private static Dictionary<long, MinedNode> minedNodes = new();
 
@@ -92,7 +101,8 @@ namespace MagmaDataMiner
 
         public static MinedGraph ParseGraph(MinedAsset graph)
         {
-            if (GraphCache.TryGetValue(graph.AssetName, out var cached)) {
+            if (GraphCache.TryGetValue(graph.AssetName, out var cached))
+            {
                 return cached;
             }
 
@@ -104,9 +114,10 @@ namespace MagmaDataMiner
 
             foreach (var nodeFileID in graph["nodes"].Enumerate().Select(x => (long)x["fileID"].Value))
             {
-                MinedNode minedNode = new();
 
                 var node = MineDb.Get(new(nodeFileID, graph.AssetGuid));
+
+                MinedNode minedNode = new(node);
 
                 nodes.Add(nodeFileID, node);
                 minedNodes.Add(nodeFileID, minedNode);
@@ -123,6 +134,7 @@ namespace MagmaDataMiner
                 minedNode.Color = color;
                 minedNode.IsDark = dark;
                 minedNode.ShinyType = data.TypeName.Remove(0, lastDot + 1);
+                minedNode.ShinyTypeFull = data.TypeName;
 
                 foreach (var (name, field) in data.fields.Where(x => !CommonFields.Contains(x.Key)))
                 {
@@ -168,7 +180,7 @@ namespace MagmaDataMiner
                         throw new NotSupportedException();
                     }
 
-                    MinedPort minedPort = new(name, direction.ToString(), connectionType.ToString(), typeConstraint.ToString(), portType.FullName!);
+                    MinedPort minedPort = new(minedNode, name, direction.ToString(), connectionType.ToString(), typeConstraint.ToString(), portType.FullName!);
                     minedNode.Ports.Add(name, minedPort);
 
                     foreach (var conn in port["connections"].Enumerate())
@@ -191,7 +203,8 @@ namespace MagmaDataMiner
         private static readonly Dictionary<string, (Color Color, bool IsDark)> TintCache = new();
         private static (Color, bool) LookupTint(string typeName)
         {
-            if (!TintCache.TryGetValue(typeName, out var colorAndDark)) {
+            if (!TintCache.TryGetValue(typeName, out var colorAndDark))
+            {
                 colorAndDark.Color = Color.DarkGray;
 
                 var type = MineDb.asm?.GetType(typeName);
@@ -225,6 +238,10 @@ namespace MagmaDataMiner
             }
             return colorAndDark;
         }
+    }
+
+    public class AresSimulator
+    {
 
         public static List<(string ActionName, MinedGraph Graph)> ParseAbilityGraph(MinedAsset abilityData)
         {
@@ -236,7 +253,7 @@ namespace MagmaDataMiner
 
                 var graph = actionData.Deref("actionGraph");
 
-                result.Add((actionData.AssetName, ParseGraph(graph)));
+                result.Add((actionData.AssetName, AresParser.ParseGraph(graph)));
 
             }
 
@@ -247,17 +264,15 @@ namespace MagmaDataMiner
         public static int ProcessActionDamage(MinedAsset actionData)
         {
             var graphHandle = actionData.Deref("actionGraph");
-            ParseGraph(graphHandle);
+            var graph = AresParser.ParseGraph(graphHandle);
 
             ResolveContext ctx = new(actionData);
             int damage = 0;
-            foreach (var node in nodes.Values)
+            foreach (var node in graph.Nodes)
             {
-                if (node.TypeName == "ShinyShoe.Ares.SharedSOs.ActionNodes.DamageFlatAmountActionNode")
+                if (node.ShinyTypeFull == "ShinyShoe.Ares.SharedSOs.ActionNodes.DamageFlatAmountActionNode")
                 {
-                    Connection amount = GetPort(node, "amount");
-
-                    damage += ResolveIntNode(ctx, amount);
+                    damage += ResolveIntNode(ctx, GetSource(node, "amount"));
                 }
             }
             return damage;
@@ -271,30 +286,24 @@ namespace MagmaDataMiner
             {
                 var actionData = actionWrapper.Deref("actionData");
 
-                var graph = actionData.Deref("actionGraph");
+                var graphData = actionData.Deref("actionGraph");
 
-                nodes.Clear();
+                var graph = AresParser.ParseGraph(graphData);
 
                 ResolveContext ctx = new(actionData);
 
-                foreach (var nodeFileID in graph["nodes"].Enumerate().Select(x => (long)x["fileID"].Value))
-                {
-                    var node = MineDb.Get(new(nodeFileID, graph.AssetGuid));
-                    nodes.Add(nodeFileID, node);
-                }
+                MinedNode? current = null;
 
-                MinedAsset? current = null;
-
-                foreach (var node in nodes.Values)
+                foreach (var node in graph.Nodes)
                 {
-                    if (node.TypeName == "ShinyShoe.Ares.SharedSOs.SetupNodes.ActionNodeEntry")
+                    if (node.ShinyTypeFull == "ShinyShoe.Ares.SharedSOs.SetupNodes.ActionNodeEntry")
                     {
                         current = node;
                     }
 
-                    if (node.TypeName == "ShinyShoe.Ares.SharedSOs.ActionNodes.DamageFlatAmountActionNode")
+                    if (node.ShinyTypeFull == "ShinyShoe.Ares.SharedSOs.ActionNodes.DamageFlatAmountActionNode")
                     {
-                        Connection amount = GetPort(node, "amount");
+                        var amount = GetSource(node, "amount");
 
                         damage += ResolveIntNode(ctx, amount);
                     }
@@ -303,14 +312,12 @@ namespace MagmaDataMiner
 
             return damage;
         }
-        private static BubbleFix ResolveFixNode(ResolveContext ctx, Connection conn)
+        private static BubbleFix ResolveFixNode(ResolveContext ctx, MinedPort? port)
         {
-            if (conn.Node == null)
-            {
+            if (port == null)
                 return new(0);
-            }
 
-            switch (conn.Node.TypeName)
+            switch (port.Node.ShinyTypeFull)
             {
                 case "ShinyShoe.Ares.SharedSOs.UnitNodes.GetDistanceBetweenTwoEntitiesNode":
                     return new(0);
@@ -319,38 +326,38 @@ namespace MagmaDataMiner
             }
         }
 
-        private static int ResolveIntNode(ResolveContext ctx, Connection conn)
+        private static int ResolveIntNode(ResolveContext ctx, MinedPort? port)
         {
-            if (conn.Node == null)
+            if (port == null)
                 return 0;
 
-            switch (conn.Node.TypeName)
+            switch (port.Node.ShinyTypeFull)
             {
                 case "ShinyShoe.Ares.SharedSOs.ConstantNodes.IntegerConstantNode":
-                    return conn.Node["value"].Int;
+                    return port.Node.Data["value"].Int;
                 case "ShinyShoe.Ares.SharedSOs.MathNodes.FixFloorNode":
-                    return (int)BubbleFixMath.Floor(ResolveFixNode(ctx, GetPort(conn.Node, "input")));
+                    return (int)BubbleFixMath.Floor(ResolveFixNode(ctx, GetSource(port, "input")));
                 case "ShinyShoe.Ares.SharedSOs.MathNodes.DivisionNode":
                     {
-                        var in1 = GetPort(conn.Node, "in1");
-                        var in2 = GetPort(conn.Node, "in2");
+                        var in1 = GetSource(port, "in1");
+                        var in2 = GetSource(port, "in2");
                         var div = ResolveIntNode(ctx, in2) ;
                         return ResolveIntNode(ctx, in1) / (div == 0 ? 1 : div);
                     }
                 case "ShinyShoe.Ares.SharedSOs.MathNodes.MultiplicationNode":
                     {
-                        var in1 = GetPort(conn.Node, "in1");
-                        var in2 = GetPort(conn.Node, "in2");
+                        var in1 = GetSource(port, "in1");
+                        var in2 = GetSource(port, "in2");
                         return ResolveIntNode(ctx, in1) * ResolveIntNode(ctx, in2);
                     }
                 case "ShinyShoe.Ares.SharedSOs.MathNodes.AdditionNode":
                     {
-                        var in1 = GetPort(conn.Node, "in1");
-                        var in2 = GetPort(conn.Node, "in2");
+                        var in1 = GetSource(port, "in1");
+                        var in2 = GetSource(port, "in2");
                         return ResolveIntNode(ctx, in1) + ResolveIntNode(ctx, in2);
                     }
                 case "ShinyShoe.Ares.SharedSOs.SetupNodes.ActionNodeActionParams":
-                    return conn.PortName switch
+                    return port.Name switch
                     {
                         "paramInt" => ctx.ActionData["paramInt"].Int,
                         "paramInt2" => ctx.ActionData["paramInt2"].Int,
@@ -363,11 +370,11 @@ namespace MagmaDataMiner
                     return 0;
                 case "ShinyShoe.Ares.SharedSOs.ConditionalNodes.IntSelectorNode":
                     {
-                        var choose = ResolveBoolNode(ctx, GetPort(conn.Node, "input"));
+                        var choose = ResolveBoolNode(ctx, GetSource(port, "input"));
                         return 0;
                     }
                 case "ShinyShoe.Ares.SharedSOs.UnitStatNodes.GetUnitStatNode":
-                    var statData = ResolveStatNode(ctx, GetPort(conn.Node, "statData"));
+                    var statData = ResolveStatNode(ctx, GetSource(port, "statData"));
                     return statData switch
                     {
                         "_blank_" => 0,
@@ -378,22 +385,22 @@ namespace MagmaDataMiner
             }
         }
 
-        private static bool ResolveBoolNode(ResolveContext ctx, Connection conn)
+        private static bool ResolveBoolNode(ResolveContext ctx, MinedPort? port)
         {
-            if (conn.Node == null)
+            if (port == null)
                 return false;
 
-            switch (conn.Node.TypeName)
+            switch (port.Node.ShinyTypeFull)
             {
                 case "ShinyShoe.Ares.SharedSOs.ConstantNodes.BoolConstantNode":
-                    return conn.Node["value"].Bool;
+                    return port.Node.Data["value"].Bool;
                 case "ShinyShoe.Ares.SharedSOs.UnitStatNodes.GetUnitHasStatusNode":
                     return false;
                 case "ShinyShoe.Ares.SharedSOs.ConditionalNodes.IntCompareNode":
                     {
-                        int in1 = ResolveIntNode(ctx, GetPort(conn.Node, "value1"));
-                        int in2 = ResolveIntNode(ctx, GetPort(conn.Node, "value2"));
-                        switch ((IntCompareNode.IntComparator)conn.Node["comparator"].Value)
+                        int in1 = ResolveIntNode(ctx, GetSource(port, "value1"));
+                        int in2 = ResolveIntNode(ctx, GetSource(port, "value2"));
+                        switch ((IntCompareNode.IntComparator)port.Node.Data["comparator"].Value)
                         {
                             case IntCompareNode.IntComparator.GreaterThan:
                                 return in1 > in2;
@@ -412,22 +419,19 @@ namespace MagmaDataMiner
                     throw new NotSupportedException();
             }
         }
-
-        private static string ResolveStatNode(ResolveContext ctx, Connection conn)
+        private static string ResolveStatNode(ResolveContext ctx, MinedPort? port)
         {
-            if (conn.Node == null)
-            {
+            if (port == null)
                 return "_blank_";
-            }
 
             MinedAsset statData;
-            switch (conn.Node.TypeName)
+            switch (port.Node.ShinyTypeFull)
             {
                 case "ShinyShoe.Ares.SharedSOs.ConstantNodes.StatDataConstantNode":
-                    statData = conn.Node.Deref("value");
+                    statData = port.Node.Data.Deref("value");
                     break;
                 case "ShinyShoe.Ares.SharedSOs.SetupNodes.ActionNodeActionParams":
-                    statData = conn.PortName switch
+                    statData = port.Name switch
                     {
                         "paramStatData" => ctx.ActionData.Deref("paramStatData"),
                         _ => throw new NotSupportedException(),
@@ -439,26 +443,21 @@ namespace MagmaDataMiner
 
             return "_blank_";
         }
-
-        private static Connection GetPort(MinedAsset node, string portName, int index = 0)
+        private static MinedPort? GetSource(MinedNode node, string inputName)
         {
-            var (found, portRaw) = node["ports"]["valuesList"].Enumerate().MaybeFirst(x => x["_fieldName"].String == portName);
-            if (!found)
-                return new(null, "");
+            var input = node.Ports[inputName];
+            if (input.Links.Count == 0)
+                return null;
 
-            var connections = portRaw["connections"];
-
-            if (index >= connections.Length)
-                return new(null, "");
-
-            var conn = connections.At(index);
-            var target = nodes[(long)conn["node"]["fileID"].Value];
-            return new(target, conn["fieldName"].String);
+            var source = input.Links[0].Node;
+            return source.Ports[input.Links[0].Target];
         }
+
+        private static MinedPort? GetSource(MinedPort nodeOwner, string inputName) => GetSource(nodeOwner.Node, inputName);
 
 
         public record class ResolveContext(MinedAsset ActionData);
-        public record class Connection(MinedAsset? Node, string PortName);
+        //public record class Connection(MinedAsset? Node, string PortName);
 
     }
 }

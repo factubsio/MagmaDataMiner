@@ -21,7 +21,6 @@ namespace MagmaDataMiner
             { "ca", "</span>" },
             { "se", "<span class=\"text-se\">" },
             { "/se", "</span>" },
-            { "manaresource", "will" },
         };
 
         private static List<TagReplacement> Parse(string input)
@@ -88,6 +87,7 @@ namespace MagmaDataMiner
 					{
 						int statIndex = int.Parse(statusEffectStatMatch.Groups[2].Value);
 						value = statusEffectData["statAdjustments"]["statEntries"].At(statIndex)["entryValue"].Value.ToString()!;
+						//value = $"[{tag.Tag} = {value}";
                     }
                     else
 					{
@@ -99,16 +99,20 @@ namespace MagmaDataMiner
 					if (MineDb.TryGetByData(actionMatch.Groups[1].Value, out var actionData))
 					{
 						value = AresSimulator.ProcessActionDamage(actionData).ToString();
-                    }
+					}
                     else
 					{
 						value = tag.Tag;
 					}
 				}
+				else if (!tag.Tag.Contains('.'))
+				{
+					value = $"<span class=\"ink-term ink-{tag.Tag}\">{LocTerm(tag.Tag)}</span>";
+
+				}
 				else
                 {
 					value = (string)getParam(tag.Tag);
-
 				}
 
                 builder.Remove(tag.Begin, tag.Length).Insert(tag.Begin, value);
@@ -162,6 +166,99 @@ namespace MagmaDataMiner
 			//	}
 			//}
 			//_applyParamsDepth--;
+		}
+
+		private static Dictionary<string, Dictionary<string, string>> Terms = new();
+
+		public static void Init()
+		{
+			Dictionary<string, string> enUS = new()
+            {
+                { "movement", "Movement" },
+                { "burn", "Burn" },
+                { "orb", "Orb" },
+                { "shatter", "Shatter" },
+                { "heat", "Heat" },
+                { "rungold", "Kwillings" },
+                { "cooldown", "Base Cooldown" },
+                { "dazed", "Dazed" },
+                { "manacost", "Will Cost" },
+                { "manaresource", "Will" },
+                { "cd", "Cooldown" },
+                { "costreduction", "Cost Discount" },
+                { "poison", "Poison" },
+                { "shuriken", "shuriken" },
+                { "marked", "Marked" },
+                { "blur", "Blur" },
+                { "physicalpower", "Physical Power" },
+                { "magicpower", "Magic Power" },
+                { "abilitypower", "Omni Power" },
+                { "criticalcharge", "Critical Charge" },
+                { "toxic", "Toxic" },
+                { "bleed", "Bleed" },
+                { "psicharge", "Psi Charge" },
+                { "psicharges", "Psi Charges" },
+                { "threaded", "Threaded" },
+                { "frostbite", "Frostbite" },
+                { "thread", "Thread" },
+                { "hex", "Hex" },
+                { "threads", "Threads" },
+                { "spiked", "Spiked" },
+                { "crush", "Crush" },
+                { "shocked", "Shocked" },
+                { "sentineldrones", "Sentinel Drones" },
+                { "sentineldrone", "Sentinel Drone" },
+                { "resistant", "Resistant" },
+                { "magical", "Magical" },
+                { "physical", "Physical" },
+                { "infusion", "Infusion" },
+                { "cbpassive", "Martial Master" },
+                { "sap", "Sap" },
+                { "cbpassivebuilder", "Combo" },
+                { "healthresource", "HP" },
+                { "maxhp", "Max HP" },
+                { "smite", "Smite" },
+                { "vigor", "Vigor" },
+                { "precise", "Precise" },
+                { "attackbinding", "Attack Binding" },
+                { "attackbindings", "Attack Bindings" },
+                { "cds", "Cooldowns" },
+                { "dread", "Dread" },
+                { "manapool", "Will Reserve" },
+                { "orbs", "Orbs" },
+                { "cooldownperorb", "cooldownperorb.TODO" },
+                { "movementperturn", "Movement Per Turn" },
+                { "shatteredwill", "Shattered Will" },
+                { "singleglyph", "Glyph" },
+                { "movementactiontag", "Movement" },
+                { "gkpassive", "Velocity" },
+                { "vulnerable", "Vulnerable" },
+                { "ensnared", "Ensnared" },
+                { "rooted", "Rooted" },
+                { "gaze", "Gaze" },
+                { "critchance", "Critical Chance" },
+                { "critdamage", "Critical Damage" },
+                { "shieldperturnstat", "Shielding" },
+                { "shieldresource", "Shield" },
+                { "damageresist", "Damage Reduction" },
+                { "burndamage", "Burn Damage" },
+                { "poisondamage", "Poison Damage" },
+                { "bleeddamage", "Bleed Damage" },
+                { "frostbitedamage", "Frostbite Damage" },
+                { "spikeddamage", "Spiked Damage" },
+            };
+            Terms["en-US"] = enUS;
+		}
+
+		private static object LocTerm(string tag)
+		{
+			var lang = GlobalLanguageSet.Current;
+			if (!Terms.TryGetValue(lang, out var translations))
+                return $"{tag}.TODO";
+
+			if (translations.TryGetValue(tag, out var term))
+				return term;
+			return $"{tag}.TODO";
 		}
 
 		private static bool TryMatch(Regex pattern, string tag, out Match match)

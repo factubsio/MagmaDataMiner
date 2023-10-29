@@ -1,4 +1,5 @@
 ﻿using BubbleAssets;
+using BubbleAssets.Assets;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.Extensions.FileSystemGlobbing.Internal.PathSegments;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -259,6 +260,8 @@ namespace MagmaDataMiner
 
         public string String => (Value as string)!;
 
+        private static HashSet<string> LoccerFails = new();
+
         public string Localized()
         {
             if (IsNull)
@@ -275,14 +278,16 @@ namespace MagmaDataMiner
                     return value.ToString();
                 else if (Loccer.TryGetLocalizationParameterStatusEffectProcChance(param, out var value2))
                     return value2.ToString();
-                else if (param == "oa")
-                    return "<span class=\"text-added\">";
-                else if (param == "ca")
-                    return "</span>";
                 else if (Loccer.TryGetLocalizationParameterActionDamageParam(param, out var damage))
                     return damage.ToString();
                 else
+                {
+                    if (LoccerFails.Add(param))
+                    {
+                        Console.WriteLine(param);
+                    }
                     return param;
+                }
 
             });
             return raw;
@@ -560,6 +565,7 @@ namespace MagmaDataMiner
 
             string? base64Icon = null;
 
+
             if (IconsByName.TryGetValue(iconName, out var iconSprite))
             {
                 if (BlueprintAssetsContext.TryRenderSprite(iconSprite, out var icon))
@@ -599,12 +605,7 @@ namespace MagmaDataMiner
         }
         public static string Translate(string key)
         {
-            if (GlobalLanguageSet.Language == null)
-            {
-                throw new Exception();
-            }
-
-            return Translate(GlobalLanguageSet.Language, key);
+            return Translate(GlobalLanguageSet.Current, key);
         }
 
         private static readonly AssetContext assets = new();
@@ -663,7 +664,7 @@ namespace MagmaDataMiner
                 UnityAssetReference assetRef = new(0, obj.m_PathID);
                 var ptrToSprite = new PPtr<Sprite>(assetRef, obj.Owner);
                 var sprite = ptrToSprite.Object;
-                //bobwr.Write($"adding icon: {sprite.Name}\n");
+                bobwr.Write($"adding icon: {sprite.Name}\n");
                 if (!IconsByName.ContainsKey(sprite.Name))
                 {
                     IconsByName.Add(sprite.Name, sprite);
@@ -829,6 +830,7 @@ namespace MagmaDataMiner
         public static MinedAsset Lookup(string v) => byName[v];
 
         public static IEnumerable<MinedAsset> AssetsByType(string v) => ByType[v].Select(x => Get(x.assetID));
+        public static Dictionary<object, CompactLocation[]> ResourceMap = new();
 
         public static void LoadAll()
         {
@@ -860,6 +862,8 @@ namespace MagmaDataMiner
         {
             Language = language;
         }
+
+        public static string Current => Language ?? "en-US";
 
         public void Dispose()
         {

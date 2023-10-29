@@ -63,6 +63,10 @@
 									{
 										<img class="ui-icon" src="data:image/png;base64, @ability.IconBase64"/>
 									}
+									else
+									{
+										<img class="ui-icon"/>
+									}
 									<h3 style="display:inline-block">@ability.Name</h3>
 									<span class="cost">@ability.Cost</span>
 									<span class="cooldown">@ability.Cooldown</span>
@@ -90,8 +94,18 @@
 									@foreach (var ascension in ability.Ascensions)
 									{
 										<div id="dataid:@ascension.Hash">
-											<span class="ascension-name">@ascension.Name</span>
+											<span class="ascension-name">@ascension.Name
+											@if (ascension.Cost != ability.Cost)
+											{
+												<span class="cost">@ascension.Cost</span>
+											}
+											@if (ascension.Cooldown != ability.Cooldown)
+											{
+												<span class="cooldown">@ascension.Cooldown</span>
+											}
+											</span>
 											<span class="ascension-description">@Raw(ascension.Description)</span>
+
 										</div>
 									}
 								</div>

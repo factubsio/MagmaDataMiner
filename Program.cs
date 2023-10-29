@@ -8,6 +8,7 @@ using System.Text;
 using MagmaDataMiner;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using ShinyShoe.Ares.ConstantNodes;
+using BubbleAssets.Assets;
 
 Console.WriteLine("Hello, World!");
 
@@ -22,9 +23,24 @@ const string path = @"C:\Program Files (x86)\Steam\steamapps\common\Inkbound\Ink
 
 const bool web = true;
 
+Catalog catalog = Catalog.FromJson(@"C:\Program Files (x86)\Steam\steamapps\common\Inkbound\Inkbound_Data\StreamingAssets\aa\catalog.json");
+MineDb.ResourceMap = catalog.CreateLocator();
+
+
 MineDb.Init(path);
 
 MineDb.LoadAll();
+
+Loccer.Init();
+
+var global = MineDb.AssetsByType("GlobalGameData").First();
+
+foreach (var seasonData in MineDb.AssetsByType("SeasonData"))
+{
+    var name = seasonData["seasonName"].Value;
+    Console.WriteLine(name);
+}
+
 
 //output.WriteLine("TYPES:");
 //foreach (var key in MineDb.ByType.OrderBy(k => k.Key))
@@ -170,13 +186,22 @@ AbilitiesModel GenerateModel(IEnumerable<MinedAsset> draftableAbilities, IEnumer
 
     foreach (var trinket in MineDb.AssetsByType("TrinketData").OrderBy(x => x["trinketName"].String))
     {
+        string? iconGuid = trinket["assetAddressIcon64"]["m_AssetGUID"].String;
+        string? iconName = null;
+        if (iconGuid != null && MineDb.ResourceMap.TryGetValue(iconGuid, out var locs) && (locs.Length > 0))
+        {
+            iconName = locs[0].primaryKey;
+        }
+
+        var icon = MineDb.Base64Icon(Path.GetFileNameWithoutExtension(iconName));
+
         Equipment trinketModel = new(
             trinket["trinketName"].Translated(),
             trinket["description"].Localized(),
             RarityType.Common,
             new(),
             null,
-            null,
+            icon,
             trinket.DataId);
         trinkets.All.Add(trinketModel);
         model.SearchIndex.Add(new(trinketModel.Name, "trinket", "equip", "Trinkets", trinketModel.Hash));
