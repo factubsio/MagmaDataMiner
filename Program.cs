@@ -186,14 +186,8 @@ AbilitiesModel GenerateModel(IEnumerable<MinedAsset> draftableAbilities, IEnumer
 
     foreach (var trinket in MineDb.AssetsByType("TrinketData").OrderBy(x => x["trinketName"].String))
     {
-        string? iconGuid = trinket["assetAddressIcon64"]["m_AssetGUID"].String;
-        string? iconName = null;
-        if (iconGuid != null && MineDb.ResourceMap.TryGetValue(iconGuid, out var locs) && (locs.Length > 0))
-        {
-            iconName = locs[0].primaryKey;
-        }
 
-        var icon = MineDb.Base64Icon(Path.GetFileNameWithoutExtension(iconName));
+        var icon = MineDb.Base64Icon(trinket["assetAddressIcon64"].Asset);
 
         Equipment trinketModel = new(
             trinket["trinketName"].Translated(),
@@ -257,7 +251,7 @@ AbilitiesModel GenerateModel(IEnumerable<MinedAsset> draftableAbilities, IEnumer
             (RarityType)vestige["rarity"].Value,
             stats,
             sets,
-            MineDb.Base64Icon(vestige["assetAddressIcon"]["m_SubObjectName"].String),
+            MineDb.Base64Icon(vestige["assetAddressIcon"].Asset),
             vestige.DataId);
         equipCat.All.Add(equipModel);
         model.SearchIndex.Add(new(equipModel.Name, eType == EquipmentType.Accessory ? "vestige" : "consumable", "equip", equipCat.Name, equipModel.Hash));

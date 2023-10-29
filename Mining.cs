@@ -558,7 +558,7 @@ namespace MagmaDataMiner
 
         public static readonly Dictionary<string, Sprite> IconsByName = new();
 
-        public static string? Base64Icon(string? iconName)
+        private static string? Base64Icon(string? iconName)
         {
             if (iconName == null)
                 return null;
@@ -629,8 +629,10 @@ namespace MagmaDataMiner
 
             string criticalAssetsBundle = "";
             string allAssetsBundle = "";
+            string defaultLocalBundle = "";
 
-            foreach (var maybe in Directory.GetFiles(locDir)) {
+            foreach (var maybe in Directory.GetFiles(locDir))
+            {
                 if (maybe.Contains("localization-string-tables-"))
                 {
                     translationBundles.Add(Path.GetFileName(maybe));
@@ -648,32 +650,21 @@ namespace MagmaDataMiner
                     criticalAssetsBundle = Path.GetFileName(maybe);
                     assets.AddBundle(maybe);
                 }
-            }
 
-            foreach (var obj in assets.assetsByBundle[criticalAssetsBundle][0].ObjectIndex.Where(x => x.ClassType == ClassIDType.Sprite))
-            {
-                UnityAssetReference assetRef = new(0, obj.m_PathID);
-                var ptrToSprite = new PPtr<Sprite>(assetRef, obj.Owner);
-                var sprite = ptrToSprite.Object;
-                //bobwr.Write($"adding icon: {sprite.Name}\n");
-                IconsByName.Add(sprite.Name, sprite);
-            }
-
-            foreach (var obj in assets.assetsByBundle[allAssetsBundle][0].ObjectIndex.Where(x => x.ClassType == ClassIDType.Sprite))
-            {
-                UnityAssetReference assetRef = new(0, obj.m_PathID);
-                var ptrToSprite = new PPtr<Sprite>(assetRef, obj.Owner);
-                var sprite = ptrToSprite.Object;
-                bobwr.Write($"adding icon: {sprite.Name}\n");
-                if (!IconsByName.ContainsKey(sprite.Name))
+                if (maybe.Contains("defaultlocalgroup_assets_all_"))
                 {
-                    IconsByName.Add(sprite.Name, sprite);
+                    defaultLocalBundle = Path.GetFileName(maybe);
+                    assets.AddBundle(maybe);
                 }
             }
 
+            AddSpritesFromBundle(criticalAssetsBundle);
+            AddSpritesFromBundle(allAssetsBundle);
+            AddSpritesFromBundle(defaultLocalBundle);
+
             var keyToIdAssets = assets.assetsByBundle["localization-assets-shared_assets_all.bundle"][0];
 
-            foreach (var obj in  keyToIdAssets.ObjectIndex.Where(x => x.ClassType == ClassIDType.MonoBehaviour))
+            foreach (var obj in keyToIdAssets.ObjectIndex.Where(x => x.ClassType == ClassIDType.MonoBehaviour))
             {
                 var sharedTable = AssetMining.MineMonoBehaviour(obj.serializedType.TypeTree, new AssetFileReader(obj))["Base"].Asset;
                 LocKeyTable table = new()
@@ -762,6 +753,19 @@ namespace MagmaDataMiner
                 }
             }
 
+            static void AddSpritesFromBundle(string bundleName)
+            {
+                foreach (var obj in assets.assetsByBundle[bundleName][0].ObjectIndex.Where(x => x.ClassType == ClassIDType.Sprite))
+                {
+                    UnityAssetReference assetRef = new(0, obj.m_PathID);
+                    var ptrToSprite = new PPtr<Sprite>(assetRef, obj.Owner);
+                    var sprite = ptrToSprite.Object;
+                    if (!IconsByName.ContainsKey(sprite.Name))
+                    {
+                        IconsByName.Add(sprite.Name, sprite);
+                    }
+                }
+            }
         }
 
         private static void Add(MinedAsset asset, AssetLibraryManifest.Entry entry)
@@ -851,6 +855,24 @@ namespace MagmaDataMiner
         public static Type GetClassTypeByGuid(string guid, long fileID)
         {
             return asm?.GetType(guidAndFileIDToEntry[new(fileID, guid)].className) ?? throw new Exception();
+        }
+
+        public static string? Base64Icon(MinedAsset assetAddress)
+        {
+            string? iconName = assetAddress["m_SubObjectName"].String;
+            if (iconName == null)
+            {
+                string? iconGuid = assetAddress["m_AssetGUID"].String;
+                if (iconGuid != null && MineDb.ResourceMap.TryGetValue(iconGuid, out var locs) && (locs.Length > 0))
+                {
+                    iconName = locs[0].primaryKey;
+                }
+
+                if (iconName != null)
+                    iconName = Path.GetFileNameWithoutExtension(iconName);
+            }
+
+            return Base64Icon(iconName);
         }
     }
 

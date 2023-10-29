@@ -75,18 +75,18 @@
 								<h4>@Raw(ability.Description)</h4>
 								<table class="augment-table">
 									<tr>
-										<th width="100px">Name</th>
-										<th width="100">Description</th>
-										<th width="100px">Rarity</th>
-										<th width="100px">Unique</th>
+										<th class="aug-name" width="100px">Name</th>
+										<th class="aug-desc" width="100px">Description</th>
+										<th class="aug-rarity" width="50px">Rarity</th>
+										<th class="aug-unique" width="50px">Unique</th>
 									</tr>
 									@foreach (var augment in ability.Augments)
 									{
 										<tr>
-											<td width="100px">@augment.Name</td>
-											<td width="100">@Raw(augment.Description)</td>
-											<td width="100px">@augment.Rarity</td>
-											<td width="100px">@augment.Unique</td>
+											<td>@augment.Name</td>
+											<td>@Raw(augment.Description)</td>
+											<td>@augment.Rarity</td>
+											<td>@augment.Unique</td>
 										</tr>
 									}
 								</table>

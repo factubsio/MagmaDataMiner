@@ -117,8 +117,7 @@ namespace MagmaDataMiner
 			var cooldown = abilityData["cooldownTurnCount"].Int;
 
 			var name = abilityData["abilityName"].Translated();
-
-			string? base64icon = MineDb.Base64Icon(abilityData["assetAddressArt"]["m_SubObjectName"].String);
+			string? base64icon = MineDb.Base64Icon(abilityData["assetAddressArt"].Asset);
 
 			var targetType = (RangeMode)abilityData["targetInfo"]["rangeMode"].Value;
 			var targetAlignment = (TeamAlignment)abilityData["targetInfo"]["teamAlignment"].Value;
