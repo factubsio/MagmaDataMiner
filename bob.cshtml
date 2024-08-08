@@ -72,6 +72,11 @@
 									<span class="cooldown">@ability.Cooldown</span>
 									<span class="linkme" data-id="@ability.Hash">permalink</span>
 								</div>
+								<div class="ability-tags">
+									@foreach (var tag in ability.TagNames) {
+										<span>@tag</span>
+									}
+								</div>
 								<h4>@Raw(ability.Description)</h4>
 								<table class="augment-table">
 									<tr>
@@ -95,15 +100,14 @@
 									{
 										<div id="dataid:@ascension.Hash">
 											<span class="ascension-name">@ascension.Name
-											@if (ascension.Cost != ability.Cost)
-											{
-												<span class="cost">@ascension.Cost</span>
-											}
-											@if (ascension.Cooldown != ability.Cooldown)
-											{
-												<span class="cooldown">@ascension.Cooldown</span>
-											}
+											<span class="cost">@ascension.Cost</span>
+											<span class="cooldown">@ascension.Cooldown</span>
 											</span>
+											<div class="ability-tags">
+												@foreach (var tag in ascension.TagNames) {
+													<span>@tag</span>
+												}
+											</div>
 											<span class="ascension-description">@Raw(ascension.Description)</span>
 
 										</div>

@@ -6,6 +6,7 @@ using ShinyShoe.SharedDataLoader;
 using System;
 using System.Buffers.Text;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -45,7 +46,31 @@ namespace MagmaDataMiner
 								int Cooldown,
 								SimpleTargetInfo Target,
 								string? IconBase64,
-								string Hash);
+								string Hash,
+								List<string> Tags)
+	{
+
+		public IEnumerable<string> TagNames => Tags.Select(LookupTagName);
+
+		private static Dictionary<string, string> TagNameLookup = new()
+		{
+			{"[attackbinding]", "[Attack]" },
+			{"[physicalactiontag]", "[Physical]" },
+			{"[magicalactiontag]", "[Magic]" },
+			{"[movementactiontag]", "[Movement]" },
+			{"[basicbinding]", "[Basic]" },
+
+		};
+		private static string LookupTagName(string tag)
+		{
+			if (TagNameLookup.TryGetValue(tag, out var val))
+			{
+				return val;
+			}
+			return tag;
+		}
+
+	}
     public record class EquipmentCategory(string Name, List<Equipment> All);
 
     public record class StatGain(int Value, string Name)
@@ -103,6 +128,8 @@ namespace MagmaDataMiner
 
 	public class AbilitySource
 	{
+		public readonly List<(string, Image)> AbilityIcons = new();
+
 		public List<Ability> Abilities = new();
 		public string Source = "";
 
@@ -119,13 +146,35 @@ namespace MagmaDataMiner
 			var name = abilityData["abilityName"].Translated();
 			string? base64icon = MineDb.Base64Icon(abilityData["assetAddressArt"].Asset);
 
-			var targetType = (RangeMode)abilityData["targetInfo"]["rangeMode"].Value;
+			if (MineDb.generateSpriteSheet)
+			{
+				var img = MineDb.DecodeImage(abilityData["assetAddressArtLarge"].Asset);
+				if (img != null)
+				{
+					AbilityIcons.Add((name, img));
+				}
+			}
+
+
+            var targetType = (RangeMode)abilityData["targetInfo"]["rangeMode"].Value;
 			var targetAlignment = (TeamAlignment)abilityData["targetInfo"]["teamAlignment"].Value;
 			var requiresTarget = abilityData["targetInfo"]["requiresTarget"].Bool;
 
 			SimpleTargetInfo target = new(targetType, targetAlignment, requiresTarget);
 
-			Ability ability = new(name, abilityData["description"].Localized(), new(), new(), cost, cooldown, target, base64icon, abilityData.DataId);
+			List<string> tags = new();
+			foreach (var tag in abilityData["actionTags"].EnumerateAssetLinks())
+			{
+				var tagHelper = tag.Deref("helperData");
+				var tagName = tagHelper["titleKey"].Translated();
+				if (tagName.Length > 0)
+				{
+					tags.Add(tagName);
+				}
+			}
+
+
+			Ability ability = new(name, abilityData["description"].Localized(), new(), new(), cost, cooldown, target, base64icon, abilityData.DataId, tags);
 
             index.Add(new(ability.Name, isAscension ? "ascension" : "binding", "bindings", Source, ability.Hash));
 
@@ -135,6 +184,7 @@ namespace MagmaDataMiner
 
 		internal void AddAbility(MinedAsset abilityData, List<SearchKey> index)
 		{
+			var name = abilityData["abilityName"].Translated();
 			var ability = MakeAbility(abilityData, index, false);
 			foreach (var upgrade in abilityData.EnumerateAssetLinks("mainUpgrades"))
 			{

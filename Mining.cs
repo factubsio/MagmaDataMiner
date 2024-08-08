@@ -10,6 +10,7 @@ using ShinyShoe.EcsEventSystem;
 using ShinyShoe.SharedDataLoader;
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography.X509Certificates;
@@ -551,31 +552,16 @@ namespace MagmaDataMiner
 
     public class MineDb
     {
+        public static bool generateSpriteSheet = true;
+        public static bool generateWeb = true;
 
         public const string draftableAssetName = "ClassesAndLoot/AbilityDrafts/DraftLists/NonClassAbilities_AbilityList";
         public static IEnumerable<MinedAsset> CharacterClasses => AssetsByType("CharacterClassData");
         public static IEnumerable<MinedAsset> DraftableBindings => Lookup(draftableAssetName).EnumerateAssetLinks("abilities");
 
         public static readonly Dictionary<string, Sprite> IconsByName = new();
+        public static readonly Dictionary<string, List<Sprite>> BackupIconsByName = new();
 
-        private static string? Base64Icon(string? iconName)
-        {
-            if (iconName == null)
-                return null;
-
-            string? base64Icon = null;
-
-
-            if (IconsByName.TryGetValue(iconName, out var iconSprite))
-            {
-                if (BlueprintAssetsContext.TryRenderSprite(iconSprite, out var icon))
-                {
-                    base64Icon = BlueprintAssetsContext.ImageToBase64(icon);
-                }
-            }
-
-            return base64Icon;
-        }
 
         private static readonly Dictionary<AssetID, MinedAsset> db = new();
         private static readonly Dictionary<string, MinedAsset> byData = new();
@@ -764,6 +750,15 @@ namespace MagmaDataMiner
                     {
                         IconsByName.Add(sprite.Name, sprite);
                     }
+                    else
+                    {
+                        if (!BackupIconsByName.TryGetValue(sprite.Name, out var list))
+                        {
+                            list = new List<Sprite>();
+                            BackupIconsByName.Add(sprite.Name, list);
+                        }
+                        list.Add(sprite);
+                    }
                 }
             }
         }
@@ -856,23 +851,66 @@ namespace MagmaDataMiner
         {
             return asm?.GetType(guidAndFileIDToEntry[new(fileID, guid)].className) ?? throw new Exception();
         }
-
-        public static string? Base64Icon(MinedAsset assetAddress)
+        public static bool TraceImageDecode = false;
+        public static Image? DecodeImage(MinedAsset assetAddress, int desiredSize = -1)
         {
             string? iconName = assetAddress["m_SubObjectName"].String;
+            if (TraceImageDecode)
+            {
+                Console.WriteLine($"iconName: {iconName}");
+            }
             if (iconName == null)
             {
                 string? iconGuid = assetAddress["m_AssetGUID"].String;
+                Console.WriteLine($"iconGuid: {iconGuid}");
                 if (iconGuid != null && MineDb.ResourceMap.TryGetValue(iconGuid, out var locs) && (locs.Length > 0))
                 {
                     iconName = locs[0].primaryKey;
+                    Console.WriteLine($"decodedName: {iconName}");
                 }
 
                 if (iconName != null)
                     iconName = Path.GetFileNameWithoutExtension(iconName);
             }
 
-            return Base64Icon(iconName);
+            if (iconName == null)
+                return null;
+
+            if (IconsByName.TryGetValue(iconName, out var iconSprite))
+            {
+                if (desiredSize != -1 && desiredSize != iconSprite.m_Rect.width)
+                {
+                    if (BackupIconsByName.TryGetValue(iconName, out var candidates))
+                    {
+                        foreach (var candidate in candidates)
+                        {
+                            if (candidate.m_Rect.width == desiredSize)
+                            {
+                                Console.WriteLine("Found better icon candidate in backup list");
+                                iconSprite = candidate;
+                                break;
+                            }
+                        }
+
+                    }
+
+                }
+
+                if (BlueprintAssetsContext.TryRenderSprite(iconSprite, out var icon))
+                {
+                    return icon;
+                }
+            }
+            return null;
+        }
+
+        public static string? Base64Icon(MinedAsset assetAddress)
+        {
+            Image? img = DecodeImage(assetAddress);
+            if (img != null)
+                return BlueprintAssetsContext.ImageToBase64(img);
+            else
+                return null;
         }
     }
 

@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Mvc.DataAnnotations;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using ShinyShoe.Ares.ActionNodes;
 using ShinyShoe.Ares.ConditionalNodes;
 using ShinyShoe.SharedDataLoader.XNode;
 using System;
@@ -57,6 +58,13 @@ namespace MagmaDataMiner
             this.ConnectionType = connectionType;
             this.Constraint = constraint;
             this.TypeName = typeName;
+        }
+
+        internal MinedNode? FirstConnectedNode()
+        {
+            if (Links.Count == 0)
+                return null;
+            return Links[0].Node;
         }
     }
 
@@ -266,16 +274,25 @@ namespace MagmaDataMiner
             var graphHandle = actionData.Deref("actionGraph");
             var graph = AresParser.ParseGraph(graphHandle);
 
-            ResolveContext ctx = new(actionData);
-            int damage = 0;
+            ResolveContext ctx = new(actionData, graph.Name);
+
+            MinedNode? current = null;
+
             foreach (var node in graph.Nodes)
             {
-                if (node.ShinyTypeFull == "ShinyShoe.Ares.SharedSOs.ActionNodes.DamageFlatAmountActionNode")
+                if (node.ShinyTypeFull == "ShinyShoe.Ares.SharedSOs.SetupNodes.ActionNodeEntry")
                 {
-                    damage += ResolveIntNode(ctx, GetSource(node, "amount"));
+                    current = node;
+                    break;
                 }
             }
-            return damage;
+
+            while (current != null)
+            {
+                current = ResolveActionNode(ctx, current);
+            }
+
+            return ctx.Damage;
         }
 
         public static int ProcessAbilityGraph(MinedAsset abilityData)
@@ -284,33 +301,79 @@ namespace MagmaDataMiner
 
             foreach (var actionWrapper in abilityData["actionDataWrappers"]["entries"].Enumerate())
             {
+
                 var actionData = actionWrapper.Deref("actionData");
+                damage += ProcessActionDamage(actionData);
 
-                var graphData = actionData.Deref("actionGraph");
 
-                var graph = AresParser.ParseGraph(graphData);
-
-                ResolveContext ctx = new(actionData);
-
-                MinedNode? current = null;
-
-                foreach (var node in graph.Nodes)
-                {
-                    if (node.ShinyTypeFull == "ShinyShoe.Ares.SharedSOs.SetupNodes.ActionNodeEntry")
-                    {
-                        current = node;
-                    }
-
-                    if (node.ShinyTypeFull == "ShinyShoe.Ares.SharedSOs.ActionNodes.DamageFlatAmountActionNode")
-                    {
-                        var amount = GetSource(node, "amount");
-
-                        damage += ResolveIntNode(ctx, amount);
-                    }
-                }
             }
 
             return damage;
+        }
+
+        private static HashSet<string> unsupportedBoolNodes = new(); 
+        private static MinedNode? ResolveActionNode(ResolveContext ctx, MinedNode? current)
+        {
+            if (current == null)
+                return null;
+
+            string type = current.ShinyTypeFull;
+            if (type == "ShinyShoe.Ares.SharedSOs.SetupNodes.ActionNodeEntry")
+            {
+                return current.Ports["exit"].FirstConnectedNode();
+            }
+
+            if (type.StartsWith("ShinyShoe.Ares.SharedSOs.ActionNodes") || type.StartsWith("ShinyShoe.Ares.SharedSOs.UnitNodes"))
+            {
+
+                if (current.ShinyType == "DamageFlatAmountActionNode")
+                {
+                    ctx.Damage += ResolveIntNode(ctx, GetSource(current, "amount"));
+                }
+
+                return current.Ports["exit"].FirstConnectedNode();
+            }
+
+            switch (type)
+            {
+                case "ShinyShoe.Ares.SharedSOs.FlowNodes.IntSwitchNode":
+                    {
+                        var index = ResolveIntNode(ctx, GetSource(current, "input"));
+                        var portName = index switch
+                        {
+                            0 => "Zero",
+                            1 => "One",
+                            2 => "Two",
+                            3 => "Three",
+                            4 => "Four",
+                            5 => "Five",
+                            6 => "Six",
+                            7 => "Seven",
+                            8 => "Eight",
+                            9 => "Nine",
+                            10 => "Ten",
+                            _ => "Default",
+                        };
+                        return current.Ports[portName].FirstConnectedNode();
+                    }
+                case "ShinyShoe.Ares.SharedSOs.FlowNodes.BoolFlowControlNode":
+                    {
+                        var check = ResolveBoolNode(ctx, GetSource(current, "input"));
+                        if (check)
+                            return current.Ports["exitTrue"].FirstConnectedNode();
+                        else
+                            return current.Ports["exitFalse"].FirstConnectedNode();
+                    }
+                default:
+                    if (current.Ports.ContainsKey("exit"))
+                    {
+                        throw new NotSupportedException("has exit");
+                    }
+                    else
+                    {
+                        throw new NotSupportedException();
+                    }
+            }
         }
         private static BubbleFix ResolveFixNode(ResolveContext ctx, MinedPort? port)
         {
@@ -333,6 +396,8 @@ namespace MagmaDataMiner
 
             switch (port.Node.ShinyTypeFull)
             {
+                case "ShinyShoe.Ares.SharedSOs.UnitStatNodes.GetUnitHealthPercentageNode":
+                    return 100;
                 case "ShinyShoe.Ares.SharedSOs.ConstantNodes.IntegerConstantNode":
                     return port.Node.Data["value"].Int;
                 case "ShinyShoe.Ares.SharedSOs.MathNodes.FixFloorNode":
@@ -371,7 +436,17 @@ namespace MagmaDataMiner
                 case "ShinyShoe.Ares.SharedSOs.ConditionalNodes.IntSelectorNode":
                     {
                         var choose = ResolveBoolNode(ctx, GetSource(port, "input"));
-                        return 0;
+
+                        if (port.Name != "output")
+                        {
+                            return -1;
+                        }
+
+                        if (ResolveBoolNode(ctx, GetSource(port, "input")))
+                        {
+                            return ResolveIntNode(ctx, GetSource(port, "trueValue"));
+                        }
+                        return ResolveIntNode(ctx, GetSource(port, "falseValue"));
                     }
                 case "ShinyShoe.Ares.SharedSOs.UnitStatNodes.GetUnitStatNode":
                     var statData = ResolveStatNode(ctx, GetSource(port, "statData"));
@@ -380,6 +455,14 @@ namespace MagmaDataMiner
                         "_blank_" => 0,
                         _ => throw new NotSupportedException(),
                     };
+                case "ShinyShoe.Ares.SharedSOs.UnitNodes.GetNumAppliedScaledDistanceRingsNode":
+                    return 0;
+                case "ShinyShoe.Ares.SharedSOs.MathNodes.RandomizationNode":
+                    {
+                        var min = ResolveIntNode(ctx, GetSource(port, "in1"));
+                        //var max = ResolveIntNode(ctx, GetSource(port, "in2"));
+                        return min;
+                    }
                 default:
                     throw new NotSupportedException();
             }
@@ -394,8 +477,6 @@ namespace MagmaDataMiner
             {
                 case "ShinyShoe.Ares.SharedSOs.ConstantNodes.BoolConstantNode":
                     return port.Node.Data["value"].Bool;
-                case "ShinyShoe.Ares.SharedSOs.UnitStatNodes.GetUnitHasStatusNode":
-                    return false;
                 case "ShinyShoe.Ares.SharedSOs.ConditionalNodes.IntCompareNode":
                     {
                         int in1 = ResolveIntNode(ctx, GetSource(port, "value1"));
@@ -416,7 +497,12 @@ namespace MagmaDataMiner
                     }
 
                 default:
-                    throw new NotSupportedException();
+                    if (unsupportedBoolNodes.Add(port.Node.ShinyTypeFull))
+                    {
+                        Console.Error.WriteLine($"unsupported bool node: {port.Node.ShinyTypeFull} [in graph: {ctx.Name}]");
+
+                    }
+                    return false;
             }
         }
         private static string ResolveStatNode(ResolveContext ctx, MinedPort? port)
@@ -456,7 +542,10 @@ namespace MagmaDataMiner
         private static MinedPort? GetSource(MinedPort nodeOwner, string inputName) => GetSource(nodeOwner.Node, inputName);
 
 
-        public record class ResolveContext(MinedAsset ActionData);
+        public record class ResolveContext(MinedAsset ActionData, string Name)
+        {
+            public int Damage = 0;
+        }
         //public record class Connection(MinedAsset? Node, string PortName);
 
     }
